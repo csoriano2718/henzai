@@ -1,0 +1,6 @@
+dasbus>=1.7
+PyGObject>=3.42.0
+requests>=2.31.0
+
+
+

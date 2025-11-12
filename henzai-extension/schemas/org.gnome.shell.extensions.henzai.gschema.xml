@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.henzai" path="/org/gnome/shell/extensions/henzai/">
+    
+    <key name="model-name" type="s">
+      <default>'llama3.2'</default>
+      <summary>Ramalama model name</summary>
+      <description>The name of the Ramalama model to use for inference</description>
+    </key>
+    
+    <key name="reasoning-enabled" type="b">
+      <default>true</default>
+      <summary>Enable reasoning mode</summary>
+      <description>Show step-by-step reasoning for supported models</description>
+    </key>
+    
+    <key name="panel-position" type="s">
+      <choices>
+        <choice value="center"/>
+        <choice value="left"/>
+        <choice value="right"/>
+      </choices>
+      <default>'center'</default>
+      <summary>Chat panel position</summary>
+      <description>Position of the chat panel on screen</description>
+    </key>
+    
+    <key name="panel-width" type="i">
+      <range min="300" max="600"/>
+      <default>380</default>
+      <summary>Chat panel width</summary>
+      <description>Width of the chat panel in pixels</description>
+    </key>
+    
+    <key name="toggle-henzai" type="as">
+      <default>['&lt;Super&gt;h']</default>
+      <summary>Toggle henzai chat panel</summary>
+      <description>Keyboard shortcut to open/close the chat panel</description>
+    </key>
+    
+  </schema>
+</schemalist>
+

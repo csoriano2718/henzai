@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Installation script for henzai
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+
+echo "======================================"
+echo "henzai Installation Script"
+echo "======================================"
+echo
+
+# Check for required commands
+check_command() {
+    if ! command -v "$1" &> /dev/null; then
+        echo "Error: $1 is not installed"
+        return 1
+    fi
+}
+
+echo "Checking dependencies..."
+check_command python3 || exit 1
+check_command pip3 || exit 1
+check_command gnome-extensions || exit 1
+
+# Check for Ramalama
+if ! command -v ramalama &> /dev/null; then
+    echo "Warning: Ramalama is not installed"
+    echo "Please install Ramalama from: https://github.com/containers/ramalama"
+    echo "Installation will continue, but the daemon won't work without it."
+    echo
+fi
+
+# Install Python daemon
+echo
+echo "Installing Python daemon..."
+cd "$PROJECT_ROOT/henzai-daemon"
+
+# Install package
+pip3 install --user -e .
+
+# Copy systemd services
+echo "Installing systemd services..."
+mkdir -p ~/.config/systemd/user
+cp systemd/henzai-daemon.service ~/.config/systemd/user/
+cp systemd/ramalama.service ~/.config/systemd/user/
+
+# Install D-Bus service activation file
+echo "Installing D-Bus service activation file..."
+mkdir -p ~/.local/share/dbus-1/services
+cp dbus/org.gnome.henzai.service ~/.local/share/dbus-1/services/
+
+# Reload systemd
+systemctl --user daemon-reload
+
+# Enable and start Ramalama service
+echo "Starting Ramalama LLM server..."
+systemctl --user enable ramalama.service
+systemctl --user start ramalama.service
+
+# Give Ramalama a moment to start
+sleep 2
+
+# Enable and start henzai daemon
+echo "Starting henzai daemon..."
+systemctl --user enable henzai-daemon.service
+systemctl --user start henzai-daemon.service
+
+echo "✓ Services installed and started"
+
+# Install GNOME Shell extension
+echo
+echo "Installing GNOME Shell extension..."
+EXTENSION_DIR=~/.local/share/gnome-shell/extensions/henzai@csoriano
+
+# Auto-increment version to force GNOME Shell reload
+METADATA_FILE="$PROJECT_ROOT/henzai-extension/metadata.json"
+CURRENT_VERSION=$(grep -oP '"version":\s*\K\d+' "$METADATA_FILE")
+NEW_VERSION=$((CURRENT_VERSION + 1))
+sed -i "s/\"version\": $CURRENT_VERSION/\"version\": $NEW_VERSION/" "$METADATA_FILE"
+echo "Version: $CURRENT_VERSION → $NEW_VERSION"
+
+# Remove old extension directory (clean install)
+rm -rf "$EXTENSION_DIR"
+
+# Create extension directory
+mkdir -p "$EXTENSION_DIR"
+
+# Copy extension files
+cp -r "$PROJECT_ROOT/henzai-extension/"* "$EXTENSION_DIR/"
+
+# Compile schema if exists
+if [ -d "$EXTENSION_DIR/schemas" ]; then
+    echo "Compiling GSettings schema..."
+    glib-compile-schemas "$EXTENSION_DIR/schemas"
+fi
+
+echo "✓ Extension files copied"
+
+# Enable extension
+echo
+echo "Enabling extension..."
+gnome-extensions enable henzai@csoriano || true
+
+echo
+echo "======================================"
+echo "Installation Complete!"
+echo "======================================"
+echo
+echo "Next steps:"
+echo "1. Log out and log back in (or restart GNOME Shell)"
+echo "2. Press Super+H to open henzai chat"
+echo "3. Configure settings in Extensions app"
+echo
+echo "To check service status:"
+echo "  systemctl --user status ramalama"
+echo "  systemctl --user status henzai-daemon"
+echo
+echo "To view daemon logs:"
+echo "  journalctl --user -u henzai-daemon -f"
+echo "  journalctl --user -u ramalama -f"
+echo
+
+
+
+
+

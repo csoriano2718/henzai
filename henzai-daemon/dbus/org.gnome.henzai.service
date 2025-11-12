@@ -1,0 +1,6 @@
+[D-BUS Service]
+Name=org.gnome.henzai
+Exec=/bin/sh -c "systemctl --user start henzai-daemon.service"
+SystemdService=henzai-daemon.service
+
+

@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+htmlcov/
+*.cover
+.hypothesis/
+.pytest_cache/
+venv/
+ENV/
+env/
+
+# GNOME Shell Extension compiled schemas
+*.gschema.compiled
+
+# Backup files
+*.backup
+*.bak
+*~
+*.swp
+*.swo
+.*.sw?
+
+# System files
+.DS_Store
+Thumbs.db
+.directory
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+
+# Log files
+*.log
+/tmp/
+*.pid
+
+# Database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+.temp/
+temp/
+
+# Test outputs
+.coverage
+.pytest_cache/
+test-output/
+
+# Local configuration
+*.local
+.env
+.envrc
+
+# Development scripts (keep in repo but ignore their output)
+dev-*.log
+nested-*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+.fuse_hidden*
+.Trash-*
+.nfs*
+
+# Node (if ever needed)
+node_modules/
+package-lock.json
+
+# Systemd user services installed to home (don't track user-specific installs)
+# We track the source in henzai-daemon/systemd/
+
+# Ignore compiled Python wheel files
+*.whl
+
+# Ignore Ramalama models (they're huge)
+*.gguf
+*.bin
+models/
+
+.copr-build/

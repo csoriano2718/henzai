@@ -1,0 +1,44 @@
+# Cursor Rules for henzai
+
+## Project Context
+- **Type**: GNOME Shell Extension + Python D-Bus daemon
+- **Tech Stack**: GJS (GNOME JavaScript), Python 3, D-Bus, SQLite, Ramalama (llama.cpp)
+- **Target**: Fedora Linux, GNOME 47+
+
+## Primary Guidelines
+Read `AGENTS.md` first - it contains all behavioral rules, architectural patterns, and lessons learned.
+
+## Code Style
+- **Python**: PEP 8, type hints preferred
+- **JavaScript**: 4-space indent, ESNext features OK (GJS supports modern JS)
+- **Comments**: Explain "why" not "what"
+
+## File Organization
+- **Consolidate**: Keep related code together (see `AGENTS.md` for specifics)
+- **Check first**: Always verify file exists before creating new one
+- **Update existing**: Prefer updating over creating new files
+
+## Testing Requirements
+- Test at each layer: API → Client → D-Bus → UI
+- Use nested shell for UI testing (never restart main session)
+- Check logs: `journalctl --user -u henzai-daemon -f`
+
+## Before Committing
+- [ ] D-Bus interface changes reflected in both Python and JavaScript
+- [ ] Documentation updated (if API/interface changed)
+- [ ] Tested in nested shell
+- [ ] No new unnecessary files created
+
+## Quick Reference
+See `ai/README_AI.md` for:
+- Development commands
+- Architecture diagram
+- Testing strategies
+- Known issues
+
+## Learning from Mistakes
+All significant mistakes and their solutions are documented in `AGENTS.md` → Lessons Learned.
+Review before making architectural decisions.
+
+
+

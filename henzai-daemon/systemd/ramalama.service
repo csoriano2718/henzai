@@ -1,0 +1,18 @@
+[Unit]
+Description=Ramalama LLM Server
+After=network.target
+# Start early to preload model before user opens henzai
+Before=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ramalama serve --port 8080 --ctx-size 8192 --cache-reuse 512 ollama://library/deepseek-r1:14b
+Restart=on-failure
+RestartSec=5s
+
+# Performance: higher priority to load model faster
+# Nice=-5 means higher priority (range: -20 to 19)
+Nice=-5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,646 @@
+/* henzai Extension Stylesheet - Adaptive Theme (follows system light/dark mode) */
+
+/* Chat Panel - Uses GNOME Shell standard background */
+.henzai-panel {
+    background-color: #e8e6e3;  /* Calmer, less bright than #faf8f5 */
+    color: #2e3436;
+    border-radius: 0 0 12px 12px;
+    padding: 0;
+    /* GNOME Shell standard shadow for popups/panels */
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    /* System font stack with international language support (CJK, Arabic, Cyrillic, etc.) */
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Sans CJK JP', 'Noto Sans CJK KR', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+
+/* Dark mode - GNOME Shell uses these for dark theme */
+.henzai-panel:dark,
+StThemeContext:dark .henzai-panel {
+    background-color: #303030;  /* GNOME Shell dark panel background */
+    color: #eeeeec;
+}
+
+/* Header - Minimal */
+.henzai-header {
+    padding: 4px 8px;
+    background-color: rgba(120, 113, 108, 0.12);  /* Slightly darker for contrast */
+    border-bottom: 1px solid rgba(120, 113, 108, 0.2);  /* More visible border */
+    spacing: 4px;
+}
+
+.henzai-version {
+    font-size: 8pt;
+    font-family: monospace;
+    opacity: 0.5;
+}
+
+.henzai-header-button {
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 100ms ease-out;  /* Subtle, fast transition */
+}
+
+.henzai-header-button:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.henzai-header-button:active {
+    background-color: rgba(128, 128, 128, 0.25);
+}
+
+.henzai-close-button {
+    padding: 4px;
+    border-radius: 6px;
+    transition: background-color 100ms ease-out;  /* Subtle, fast transition */
+}
+
+.henzai-close-button:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.henzai-close-button:active {
+    background-color: rgba(128, 128, 128, 0.25);
+}
+
+/* Message Container */
+.henzai-message-scroll {
+    padding: 12px 0;  /* Increased from 8px for more breathing room */
+    background-color: #f5f3f0;  /* Softer than white, easier on eyes */
+}
+
+.henzai-message-container {
+    spacing: 0;
+    background-color: #f5f3f0;  /* Match scroll background */
+}
+
+/* Dark mode for messages */
+.henzai-message-scroll:dark,
+StThemeContext:dark .henzai-message-scroll,
+.henzai-message-container:dark,
+StThemeContext:dark .henzai-message-container {
+    background-color: #1e1e1e;
+}
+
+/* Messages - Terminal/IDE style */
+.henzai-message {
+    padding: 0;  /* Remove all padding - individual message types handle their own */
+    margin: 0;
+}
+
+/* Timestamp */
+.henzai-timestamp {
+    font-size: 8pt;
+    color: #999;
+    opacity: 0.7;
+    margin-bottom: 0px;  /* Minimal spacing */
+    font-family: monospace;
+}
+
+/* Loading indicator */
+.henzai-loading {
+    spacing: 8px;
+    padding: 4px 0;
+}
+
+.henzai-loading-spinner {
+    color: #3584e4;
+}
+
+.henzai-loading-text {
+    color: #666;
+    font-size: 10pt;
+    font-style: italic;
+}
+
+/* Stop button */
+.henzai-stop-button {
+    padding: 6px 12px;
+    margin: 8px 0;
+    background-color: #e01b24;
+    border-radius: 6px;
+    border: none;
+    color: #ffffff;
+}
+
+.henzai-stop-button:hover {
+    background-color: #c01c28;
+}
+
+.henzai-stop-button:active {
+    background-color: #a51d2d;
+}
+
+/* Query header - Acts as title for AI response (collapsible like thinking box) */
+.henzai-query-header {
+    padding: 8px 12px;  /* Increased from 6px 10px for more breathing room */
+    margin: 0;
+    background-color: rgba(212, 165, 116, 0.10);  /* Amber tint for user queries */
+    border-left: 3px solid #c9a574;  /* Amber border */
+    border-radius: 6px;
+    transition: background-color 150ms ease-out;  /* Smooth hover */
+}
+
+.henzai-query-header:hover {
+    background-color: rgba(212, 165, 116, 0.16);  /* Darker amber on hover */
+}
+
+.henzai-query-chevron {
+    color: #a8834e;  /* Amber-brown to match theme */
+    font-size: 9pt;
+    min-width: 14px;
+    opacity: 0.8;  /* Less transparent from 0.7 */
+}
+
+.henzai-query-arrow {
+    color: #a8834e;  /* Amber-brown to match theme */
+    font-size: 10pt;
+    min-width: 14px;
+    opacity: 0.8;  /* Less transparent from 0.7 */
+}
+
+.henzai-query-header-text {
+    color: #57534e;  /* Much darker from #78716c */
+    font-size: 10pt;
+    font-weight: 600;  /* Heavier for better scanability - was 500 */
+    /* Ensure single line with ellipsis */
+}
+
+.henzai-query-content {
+    padding: 10px 12px 10px 22px;  /* Increased for more breathing room */
+    margin: 0;
+    background-color: rgba(212, 165, 116, 0.06);  /* Subtle amber tint */
+    border-left: 3px solid #c9a574;  /* Amber border */
+    border-radius: 0 0 6px 6px;  /* Round bottom corners */
+}
+
+.henzai-query-text {
+    color: #57534e;  /* Darker from #78716c */
+    font-size: 10pt;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
+/* Copy button row after AI response */
+.henzai-copy-row {
+    margin: 4px 0 0 0;  /* Increased from 2px for more breathing room */
+    padding: 0;
+}
+
+/* Copy button at bottom - subtle by default, full opacity on hover */
+.henzai-copy-button-bottom {
+    margin: 0;
+    padding: 4px;
+    border-radius: 4px;
+    background-color: transparent;
+    color: #999;
+    min-width: 24px;
+    min-height: 24px;
+    transition: background-color 100ms ease-out, color 100ms ease-out;  /* Smooth hover */
+}
+
+.henzai-copy-button-bottom:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+    color: #1a1a1a;
+}
+
+.henzai-copy-button-bottom:active {
+    background-color: rgba(128, 128, 128, 0.25);
+}
+
+/* User input - Minimal header style */
+.henzai-user-input {
+    padding: 0;
+    margin: 16px 0 4px 0;  /* Reduced spacing */
+    border: none;  /* No borders */
+    background-color: transparent;  /* No background */
+}
+
+.henzai-prompt-symbol {
+    color: #a8a29e;  /* Muted */
+    font-size: 10pt;
+    font-weight: 400;
+    font-family: monospace;
+    padding: 0 8px 0 0;
+    opacity: 0.7;
+}
+
+.henzai-user-text {
+    color: #78716c;  /* Muted - secondary importance */
+    font-size: 10pt;
+    font-weight: 500;  /* Medium weight, like a heading */
+}
+
+/* AI response - Clean, document-like, no background */
+.henzai-message-assistant {
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(250,248,245,0.3) 100%);  /* Very subtle gradient */
+    border: none;  /* No borders */
+    margin: 0 0 16px 0;  /* Increased for more breathing room between conversations */
+    padding: 0 20px 16px 20px;  /* Increased bottom padding */
+    border-bottom: 1px solid rgba(214, 211, 209, 0.15);  /* Softer divider */
+}
+
+.henzai-response-content {
+    padding: 0;
+    margin: 0;
+}
+
+.henzai-text-line {
+    color: #292524;  /* Primary text - full contrast */
+    font-size: 10.5pt;
+    line-height: 1.7;  /* Generous for readability */
+    padding: 2px 0;
+}
+
+/* Code blocks - monospace with subtle background */
+.henzai-code-block {
+    background-color: rgba(128, 128, 128, 0.1);
+    color: #1a1a1a;
+    font-family: monospace;
+    font-size: 9.5pt;
+    padding: 4px 8px;  /* Reduced side padding */
+    margin: 2px 0;
+    border-radius: 4px;
+    border: 1px solid #d0d0d0;
+}
+
+/* Error messages */
+.henzai-message-error {
+    background-color: rgba(224, 27, 36, 0.1);
+    border-left: 3px solid #e01b24;
+    padding: 12px 16px;
+    margin: 8px 0;
+    border-radius: 6px;
+}
+
+.henzai-error-content {
+    spacing: 8px;
+}
+
+.henzai-error-icon {
+    color: #e01b24;
+    margin-top: 2px;
+}
+
+.henzai-error-text {
+    color: #e01b24;
+    font-size: 10pt;
+}
+
+.henzai-message-error .henzai-text-line {
+    color: #e01b24;
+}
+
+.henzai-button-row {
+    padding: 4px 0;
+    margin-top: 8px;
+}
+
+/* Copy button - Floating in top-right, always visible */
+.henzai-copy-button-floating {
+    margin: 4px 8px 0 8px;
+    padding: 6px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #999;
+    min-width: 28px;
+    min-height: 28px;
+}
+
+.henzai-copy-button-floating:hover {
+    background-color: rgba(128, 128, 128, 0.95);
+    color: #1a1a1a;
+}
+
+.henzai-copy-button-floating:active {
+    background-color: rgba(128, 128, 128, 1);
+}
+
+/* Input Area */
+.henzai-input-box {
+    padding: 8px 10px;
+    spacing: 0;
+    background-color: #dbd9d6;  /* Darker to match new panel color */
+    border-top: 1px solid rgba(120, 113, 108, 0.25);
+    border-radius: 0 0 12px 12px;
+}
+
+.henzai-input-scroll {
+    min-height: 32px;
+    background-color: #ffffff;  /* Keep white for input contrast */
+    border-radius: 6px;
+    border: 1px solid rgba(120, 113, 108, 0.25);
+    /* max-height applied dynamically */
+}
+
+.henzai-input-scroll:focus {
+    border-color: #3584e4;
+    box-shadow: inset 0 0 0 1px #3584e4;
+}
+
+/* Also style when child has focus */
+.henzai-input-scroll:focus-within {
+    border-color: #3584e4;
+    box-shadow: inset 0 0 0 1px #3584e4;
+}
+
+/* Overlay scrollbar styling - make it visible but subtle */
+.henzai-input-scroll StScrollBar {
+    padding: 2px;
+    margin: 4px 2px;
+}
+
+.henzai-input-scroll StScrollBar StButton {
+    min-width: 8px;
+    min-height: 8px;
+    border-radius: 4px;
+    background-color: rgba(128, 128, 128, 0.4);
+}
+
+.henzai-input-scroll StScrollBar StButton:hover {
+    background-color: rgba(128, 128, 128, 0.6);
+}
+
+.henzai-input-scroll StScrollBar StBin#trough {
+    background-color: rgba(128, 128, 128, 0.1);
+    border-radius: 4px;
+}
+
+.henzai-input {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    /* color: #1a1a1a; -- REMOVED: breaks text rendering in nested shell */
+    font-size: 10pt;
+    font-weight: 400;
+    min-height: 20px;
+}
+
+.scrollable-entry-input {
+    background-color: transparent;
+    border: none;
+    padding: 6px 10px;
+    color: #1a1a1a !important;
+    font-size: 10pt;
+}
+
+.scrollable-entry-input > StLabel {
+    color: #1a1a1a !important;
+}
+
+.scrollable-entry-input:focus {
+    background-color: transparent;
+}
+
+.scrollable-entry-input:focus > StLabel {
+    color: #1a1a1a !important;
+}
+
+/* Force text color on the ClutterText inside */
+.scrollable-entry-input StLabel {
+    color: #1a1a1a !important;
+}
+
+.henzai-input:hover {
+    border-color: rgba(128, 128, 128, 0.3);
+}
+
+.henzai-input:focus {
+    border-color: #3584e4;
+    box-shadow: inset 0 0 0 1px #3584e4;
+}
+
+.henzai-clear-button {
+    padding: 4px;
+    background-color: transparent;
+    border-radius: 4px;
+    color: #999;
+    min-width: 24px;
+    min-height: 24px;
+}
+
+.henzai-clear-button:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+    color: #1a1a1a;
+}
+
+.henzai-clear-button:active {
+    background-color: rgba(128, 128, 128, 0.25);
+}
+
+.henzai-send-button {
+    padding: 6px 8px;
+    background-color: #3584e4;
+    border-radius: 6px;
+    border: none;
+    min-width: 32px;
+    min-height: 28px;
+    transition: background-color 150ms ease-out;  /* Smooth hover */
+}
+
+.henzai-send-button:hover {
+    background-color: #2f73c7;
+}
+
+.henzai-send-button:active {
+    background-color: #2764ab;
+}
+
+/* Indicator */
+.system-status-icon {
+    icon-size: 16px;
+}
+
+/* Model Switcher & Toolbar */
+.henzai-toolbar-button {
+    padding: 4px;
+    margin: 0;
+    background-color: transparent;
+    border-radius: 4px;
+    min-width: 24px;   /* Match copy button */
+    min-height: 24px;  /* Match copy button */
+    color: #999;
+    transition: background-color 100ms ease-out;  /* Smooth hover */
+}
+
+.henzai-toolbar-button:hover {
+    background-color: rgba(128, 128, 128, 0.15);  /* Match copy button hover */
+    color: #1a1a1a;
+}
+
+.henzai-toolbar-button:active {
+    background-color: rgba(128, 128, 128, 0.25);  /* Match copy button active */
+}
+
+/* Send button in toolbar - blue and prominent */
+.henzai-send-button-toolbar {
+    padding: 4px;
+    background-color: #3584e4;
+    border-radius: 4px;
+    border: none;
+}
+
+.henzai-send-button-toolbar:hover {
+    background-color: #2f73c7;
+}
+
+.henzai-send-button-toolbar:active {
+    background-color: #2764ab;
+}
+
+.henzai-model-label {
+    color: #999;
+    font-size: 9pt;
+    padding: 2px 6px;
+}
+
+/* Reasoning section - Subtle, minimal, part of AI response */
+.henzai-reasoning-section {
+    margin: 0 0 8px 0;  /* Increased from 4px for more breathing room */
+    background-color: rgba(167, 139, 250, 0.08);  /* Purple tint for AI reasoning */
+    border-left: 2px solid rgba(167, 139, 250, 0.4);  /* Purple border */
+    border-radius: 4px;
+    padding: 0;
+}
+
+.henzai-reasoning-header-button {
+    padding: 6px 10px;
+    border-radius: 4px 4px 0 0;
+    background-color: transparent;
+    transition: background-color 150ms ease-out;  /* Smooth hover */
+}
+
+.henzai-reasoning-header-button:hover {
+    background-color: rgba(167, 139, 250, 0.12);  /* Slightly stronger purple on hover */
+}
+
+.henzai-reasoning-header {
+    spacing: 6px;
+}
+
+.henzai-reasoning-toggle {
+    color: #a78bfa;  /* Light purple */
+    font-size: 9pt;
+    min-width: 12px;
+}
+
+.henzai-reasoning-timer {
+    color: #78716c;  /* Darker from #a8a29e */
+    font-size: 8pt;
+    font-weight: normal;
+    font-style: italic;
+}
+
+.henzai-reasoning-content {
+    background-color: transparent;
+    border-radius: 0 0 4px 4px;
+    padding: 8px 12px;  /* Increased from 6px 10px for more breathing room */
+}
+
+.henzai-reasoning-text {
+    color: #57534e;  /* Much darker from #78716c */
+    font-size: 9pt;
+    font-family: monospace;
+    line-height: 1.4;
+    padding: 2px 0;
+}
+
+/* System messages - use icon and italic styling instead of background color */
+.henzai-message-system {
+    padding: 8px 16px;
+    margin: 4px 0;
+}
+
+.henzai-system-content {
+    spacing: 8px;
+}
+
+.henzai-system-icon {
+    color: #999;
+    margin-top: 2px;
+}
+
+.henzai-system-text {
+    color: #666;
+    font-size: 10pt;
+    font-style: italic;
+}
+
+/* User messages - no background, use icon and regular text */
+.henzai-message-user {
+    padding: 8px 16px;
+    margin: 4px 0;
+}
+
+.henzai-user-content {
+    spacing: 8px;
+}
+
+.henzai-user-icon {
+    color: #3584e4;
+    margin-top: 2px;
+    margin-right: 8px;  /* Add space between icon and timestamp */
+}
+
+/* AI response - no background, use left border only */
+.henzai-message-assistant {
+    border-left: 3px solid #3584e4;
+    margin: 4px 0;
+    padding-left: 12px;
+    background-color: transparent;  /* No blue background */
+}
+
+/* Welcome message - special styling for first message */
+.henzai-welcome-message {
+    border-left: 3px solid #d4a574;  /* Amber border for friendly greeting */
+    background: linear-gradient(135deg, rgba(212, 165, 116, 0.08) 0%, rgba(212, 165, 116, 0.04) 100%);  /* Subtle amber gradient */
+    padding: 16px 20px;  /* Increased from 12px 16px for more breathing room */
+    border-radius: 8px;
+    margin: 12px 0;  /* Increased from 8px for more prominence */
+}
+
+.henzai-welcome-message .henzai-text-line {
+    color: #78716c;  /* Warm muted gray */
+    font-style: italic;
+    font-size: 10.5pt;
+    line-height: 1.7;
+}
+
+.henzai-response-content {
+    padding: 2px 0 10px 0;  /* No side padding - inherit from message container */
+    margin: 0;
+}
+
+.henzai-text-line {
+    color: #1a1a1a;
+    font-size: 10.5pt;
+    line-height: 1.6;
+    padding: 2px 0;
+}
+
+/* Model switcher buttons - now without background, just border */
+.henzai-model-buttons {
+    padding: 8px 16px;
+    spacing: 8px;
+    flex-wrap: wrap;  /* Allow wrapping for 8+ models */
+}
+
+.henzai-model-button {
+    padding: 8px 16px;
+    margin: 0 4px 4px 0;
+    background-color: transparent;
+    border: 2px solid rgba(128, 128, 128, 0.3);
+    border-radius: 6px;
+    color: #1a1a1a;
+    font-size: 10pt;
+    font-weight: 500;
+}
+
+.henzai-model-button:hover {
+    background-color: rgba(128, 128, 128, 0.1);
+    border-color: rgba(128, 128, 128, 0.5);
+}
+
+.henzai-model-button:active {
+    background-color: rgba(128, 128, 128, 0.2);
+    border-color: rgba(128, 128, 128, 0.7);
+}
