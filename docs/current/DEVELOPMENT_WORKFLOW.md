@@ -42,7 +42,7 @@
 - Reloads extension in your main session
 
 **Testing:**
-- Press `Super+H` in your main desktop
+- Press `Super+A` in your main desktop
 - Full functionality available
 - Real daemon connection
 
