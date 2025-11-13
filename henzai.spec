@@ -1,5 +1,5 @@
 Name:           henzai
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        Local AI integrated into GNOME Shell
 
@@ -132,6 +132,12 @@ echo ""
 %{_docdir}/%{name}/
 
 %changelog
+* Thu Nov 13 2025 Carlos Soriano <csoriano@redhat.com> - 0.1.2-1
+- Change keyboard shortcut from Super+H to Super+A (fix conflict with minimize)
+- Consolidate UI design documentation
+- Fix GitHub Pages media paths for website
+- Assisted-by: Generated (vibe-coded) by Cursor AI with Claude Sonnet 4.5
+
 * Thu Nov 13 2025 Carlos Soriano <csoriano@redhat.com> - 0.1.1-1
 - Update welcome message example (Zeno's dichotomy paradox)
 - Improve UX with better loading states and disabled inputs
