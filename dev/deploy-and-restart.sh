@@ -69,7 +69,7 @@ for i in {1..30}; do
         echo "======================================="
         echo ""
         echo "The window should be visible now."
-        echo "Press Super+H to test henzai."
+        echo "Press Super+A to test henzai."
         echo ""
         exit 0
     fi

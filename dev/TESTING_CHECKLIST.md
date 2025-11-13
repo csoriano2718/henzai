@@ -66,7 +66,7 @@ pkill -9 -f "gnome-shell --nested"
 ### Test Streaming Timeout Fix
 
 1. Run nested shell: `./dev/dev-test.sh`
-2. Open henzai: Press `Super+H` in nested window
+2. Open henzai: Press `Super+A` in nested window
 3. Ask complex question: "Explain quantum entanglement"
 4. Verify: No timeout errors in logs
 5. Check logs: `tail -f /tmp/henzai-gnome-shell.log`
@@ -95,7 +95,7 @@ pkill -9 -f "gnome-shell --nested"
 - [ ] Ran `./dev/dev-test.sh` (fresh install)
 - [ ] Script passed verification checks
 - [ ] Nested window opened successfully
-- [ ] Opened henzai with `Super+H`
+- [ ] Opened henzai with `Super+A`
 - [ ] Sent test message
 - [ ] **Verified actual behavior matches expected**
 - [ ] Checked logs for errors: `grep -i error /tmp/henzai-gnome-shell.log`

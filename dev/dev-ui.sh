@@ -65,7 +65,7 @@ echo -e "${GREEN}✓${NC} Done"
 
 echo -e "${BLUE}[3/3]${NC} Launching nested shell (1600x1200)..."
 echo ""
-echo -e "${YELLOW}Test UI:${NC} Press Super+H"
+echo -e "${YELLOW}Test UI:${NC} Press Super+A"
 echo -e "${YELLOW}Note:${NC} Daemon not available (UI testing only)"
 echo -e "${YELLOW}Log:${NC} $GNOME_LOG"
 echo ""

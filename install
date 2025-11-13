@@ -100,7 +100,7 @@ echo "======================================"
 echo
 echo "Next steps:"
 echo "1. Log out and log back in (or restart GNOME Shell)"
-echo "2. Press Super+H to open henzai chat"
+echo "2. Press Super+A to open henzai chat"
 echo "3. Configure settings in Extensions app"
 echo
 echo "To check service status:"
