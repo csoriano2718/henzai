@@ -20,14 +20,14 @@ Local LLM integration via Ramalama with streaming responses and reasoning mode.
 
 **henzai integrates seamlessly into your GNOME desktop:**
 
-1. Press `Super+H` to open the AI panel
+1. Press `Super+A` to open the AI panel
 2. Type your question and press Enter
 3. Watch real-time streaming responses with markdown formatting
 4. For reasoning models (DeepSeek-R1), see the thinking process visualized
 5. Switch models or start new chats from the toolbar
 
 **Key Highlights:**
-- ⚡ **Instant Access**: Always one keystroke away (`Super+H`)
+- ⚡ **Instant Access**: Always one keystroke away (`Super+A`)
 - 🔒 **Private**: All processing happens locally via Ramalama
 - 🧠 **Reasoning Visualization**: See how the AI thinks step-by-step
 - 💬 **Markdown Support**: Code blocks, lists, formatting preserved
@@ -43,7 +43,7 @@ Local LLM integration via Ramalama with streaming responses and reasoning mode.
 - 🎨 **Model Switching**: Easy switching between available models via clickable model name
 - 📝 **Markdown Rendering**: Support for code blocks, lists, headings, bold, italic
 - ⚙️ **Settings Panel**: Configure models and reasoning mode
-- ⌨️ **Keyboard Shortcuts**: Quick access with `Super+H`
+- ⌨️ **Keyboard Shortcuts**: Quick access with `Super+A`
 - 🔄 **New Chat**: Start fresh conversations anytime
 - ⏹️ **Generation Control**: Stop mid-response without answer leakage
 
@@ -71,7 +71,7 @@ sudo dnf copr enable csoriano/henzai && sudo dnf install henzai
 # Restart your computer (or log out and back in)
 # This will automatically start all services and load the extension
 
-# After restart, press Super+H to use henzai!
+# After restart, press Super+A to use henzai!
 ```
 
 The RPM package automatically:
@@ -129,7 +129,7 @@ gnome-extensions list --enabled | grep henzai
   systemctl --user start ramalama
   systemctl --user start henzai-daemon
   ```
-- The extension will show an error if it can't connect to the daemon. After the first login post-install, the D-Bus activation should auto-start the daemon when you open the panel (Super+H).
+- The extension will show an error if it can't connect to the daemon. After the first login post-install, the D-Bus activation should auto-start the daemon when you open the panel (Super+A).
 
 ---
 
@@ -137,14 +137,14 @@ gnome-extensions list --enabled | grep henzai
 
 ### Basic Usage
 
-1. **Open henzai**: Press `Super+H` (or your configured keybinding)
+1. **Open henzai**: Press `Super+A` (or your configured keybinding)
 2. **Ask a question**: Type your query in the input field
 3. **Send**: Press `Enter` or click the ⬆️ button
 4. **View response**: Watch the AI respond in real-time with markdown formatting
 
 ### Keyboard Shortcuts
 
-- `Super+H`: Toggle henzai panel
+- `Super+A`: Toggle henzai panel
 - `Enter`: Send message
 - `Ctrl+Enter`: Insert newline
 - `Escape`: Close panel

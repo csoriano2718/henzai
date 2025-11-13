@@ -25,7 +25,7 @@ Recording tools:
 ## Demo 1: Streaming Responses
 
 **What to show:**
-1. Press `Super+H` to open henzai
+1. Press `Super+A` to open henzai
 2. Type: "Explain Zeno's dichotomy paradox"
 3. Press Enter
 4. Watch text stream in real-time word by word

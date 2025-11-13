@@ -33,7 +33,7 @@
     </key>
     
     <key name="toggle-henzai" type="as">
-      <default>['&lt;Super&gt;h']</default>
+      <default>['&lt;Super&gt;a']</default>
       <summary>Toggle henzai chat panel</summary>
       <description>Keyboard shortcut to open/close the chat panel</description>
     </key>
