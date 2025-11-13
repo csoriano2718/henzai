@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="data/logo.svg" alt="henzai logo" width="200"/>
+<img src="docs/data/logo.svg" alt="henzai logo" width="200"/>
 
 **Local AI integrated into GNOME Shell**
 
