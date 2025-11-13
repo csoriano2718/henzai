@@ -1,5 +1,5 @@
 NAME = henzai
-VERSION = 0.1.0
+VERSION = 0.1.1
 
 .PHONY: all clean tarball srpm copr-build
 

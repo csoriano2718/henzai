@@ -1,5 +1,5 @@
 Name:           henzai
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Local AI integrated into GNOME Shell
 
@@ -132,6 +132,13 @@ echo ""
 %{_docdir}/%{name}/
 
 %changelog
+* Thu Nov 13 2025 Carlos Soriano <csoriano@redhat.com> - 0.1.1-1
+- Update welcome message example (Zeno's dichotomy paradox)
+- Improve UX with better loading states and disabled inputs
+- Faster model status polling (1s instead of 2s)
+- Add demo videos and screenshots to website
+- Assisted-by: Generated (vibe-coded) by Cursor AI with Claude Sonnet 4.5
+
 * Thu Nov 13 2025 Carlos Soriano <csoriano@redhat.com> - 0.1.0-1
 - MVP Release (stable foundation)
 - Fix critical opacity bug (0-255 scale not 0.0-1.0)
