@@ -26,7 +26,7 @@ Recording tools:
 
 **What to show:**
 1. Press `Super+H` to open henzai
-2. Type: "Explain quantum entanglement in detail"
+2. Type: "Explain Zeno's dichotomy paradox"
 3. Press Enter
 4. Watch text stream in real-time word by word
 5. Notice markdown formatting (bold, italic, code blocks)

@@ -74,7 +74,7 @@ export class ChatPanel {
         this.actor.add_child(inputArea);
 
         // Add welcome message
-        const welcomeMessage = `Local AI. Ask anything: "Explain quantum entanglement," "How does Rust ownership work?," or explore new ideas.`;
+        const welcomeMessage = `Local AI. Ask anything: "Explain Zeno's dichotomy paradox," "How does Rust ownership work?," or explore new ideas.`;
         this._addMessage('assistant', welcomeMessage, { isWelcome: true });
         
         // Set up D-Bus signal listeners
@@ -258,7 +258,7 @@ export class ChatPanel {
         
         // Model label (clickable)
         this._modelLabel = new St.Label({
-            text: 'Loading...',
+            text: 'Loading model...',
             style: 'font-size: 9pt; opacity: 0.6;',
         });
         
@@ -369,8 +369,11 @@ export class ChatPanel {
         });
         toolbar.add_child(this._stopButton);
         
-        // Load current model name
-        this._updateCurrentModel();
+        // Load current model name asynchronously (don't block UI initialization)
+        GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            this._updateCurrentModel();
+            return GLib.SOURCE_REMOVE;
+        });
         
         return toolbar;
     }
@@ -383,10 +386,20 @@ export class ChatPanel {
             // Check if daemon is connected first
             if (!this._daemonClient.isConnected()) {
                 console.log('henzai: Daemon not connected yet, will retry...');
-                this._modelLabel.set_text('Connecting...');
+                this._modelLabel.set_text('Loading model...');
                 
-                // Retry after a delay
-                GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+                // Disable input and send button while loading
+                if (this._sendButton) {
+                    this._sendButton.reactive = false;
+                    this._sendButton.opacity = 128;
+                }
+                if (this._inputEntry) {
+                    this._inputEntry.reactive = false;
+                    this._inputEntry.opacity = 179;  // 0.7 * 255
+                }
+                
+                // Retry after 1 second
+                GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
                     this._updateCurrentModel();
                     return GLib.SOURCE_REMOVE;
                 });
@@ -1652,9 +1665,9 @@ export class ChatPanel {
             return GLib.SOURCE_CONTINUE;  // Continue polling
         };
         
-        // Poll every 2 seconds (less aggressive)
+        // Poll every 1 second for responsive feedback
         checkStatus();  // Check immediately
-        this._readinessTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, checkStatus);
+        this._readinessTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, checkStatus);
     }
     
     /**
@@ -1711,7 +1724,7 @@ export class ChatPanel {
         this._messages = [];
         
         // Re-add welcome message
-        const welcomeMessage = `Local AI. Ask anything: "Explain quantum entanglement," "How does Rust ownership work?," or explore new ideas.`;
+        const welcomeMessage = `Local AI. Ask anything: "Explain Zeno's dichotomy paradox," "How does Rust ownership work?," or explore new ideas.`;
         this._addMessage('assistant', welcomeMessage, { isWelcome: true });
     }
 
@@ -1757,7 +1770,7 @@ What would you like to do?`;
             this._messageContainer.remove_all_children();
             
             // Add welcome message
-            const welcomeMessage = `Local AI. Ask anything: "Explain quantum entanglement," "How does Rust ownership work?," or explore new ideas.`;
+            const welcomeMessage = `Local AI. Ask anything: "Explain Zeno's dichotomy paradox," "How does Rust ownership work?," or explore new ideas.`;
             this._addMessage('assistant', welcomeMessage, { isWelcome: true });
             
             // Clear daemon history
