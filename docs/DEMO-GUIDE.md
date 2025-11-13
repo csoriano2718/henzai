@@ -42,7 +42,7 @@ Recording tools:
 
 **What to show:**
 1. Make sure DeepSeek-R1 is the active model
-2. Press `Super+H`
+2. Press `Super+A`
 3. Ask: "If I have 3 apples and give away 2, then find 5 more but lose half, how many apples do I have? Show your work."
 4. Watch "Thinking..." box appear
 5. Click to expand and see reasoning process
@@ -61,7 +61,7 @@ Recording tools:
 ## Demo 3: Model Switching
 
 **What to show:**
-1. Press `Super+H`
+1. Press `Super+A`
 2. Notice model name at bottom (e.g., "deepseek-r1:14b")
 3. Click on the model name
 4. Popup shows available models
@@ -82,7 +82,7 @@ Recording tools:
 ## Demo 4: Generation Control
 
 **Part A - Stop Button:**
-1. Press `Super+H`
+1. Press `Super+A`
 2. Ask: "Write a 1000 word essay about Linux"
 3. While streaming, click ⏹️ Stop button
 4. Generation stops immediately
@@ -156,7 +156,7 @@ Expected response should demonstrate:
 ## Demo 7: New Chat
 
 **Part A - Context Carrying:**
-1. Press `Super+H`
+1. Press `Super+A`
 2. Ask: "My favorite color is blue"
 3. AI responds
 4. Ask: "What's my favorite color?"
@@ -180,7 +180,7 @@ Expected response should demonstrate:
 ## Demo 8: Settings Panel
 
 **What to show:**
-1. Press `Super+H`
+1. Press `Super+A`
 2. Click ⚙️ settings button
 3. Settings window opens
 4. Show model selection dropdown
