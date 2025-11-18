@@ -160,6 +160,56 @@ class MemoryStore:
             logger.error(f"Error retrieving context: {e}", exc_info=True)
             return []
     
+    def get_history(self, limit: Optional[int] = None) -> List[Dict[str, str]]:
+        """
+        Get conversation history in messages format (for APIs/UI).
+        
+        Args:
+            limit: Number of recent conversations to retrieve (None for all)
+            
+        Returns:
+            List of message dictionaries with 'role' and 'content' keys,
+            in chronological order (oldest first).
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            if limit:
+                cursor.execute('''
+                    SELECT user_message, assistant_response
+                    FROM conversations
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                ''', (self.current_session_id, limit))
+            else:
+                cursor.execute('''
+                    SELECT user_message, assistant_response
+                    FROM conversations
+                    WHERE session_id = ?
+                    ORDER BY timestamp ASC
+                ''', (self.current_session_id,))
+            
+            rows = cursor.fetchall()
+            
+            # Convert to messages format
+            messages = []
+            for row in (reversed(rows) if limit else rows):
+                messages.append({
+                    'role': 'user',
+                    'content': row['user_message']
+                })
+                messages.append({
+                    'role': 'assistant',
+                    'content': row['assistant_response']
+                })
+            
+            logger.debug(f"Retrieved {len(messages)} messages from session {self.current_session_id}")
+            return messages
+        except Exception as e:
+            logger.error(f"Error retrieving history: {e}", exc_info=True)
+            return []
+    
     def get_all_conversations(self, limit: Optional[int] = None) -> List[Dict]:
         """
         Get all conversations.

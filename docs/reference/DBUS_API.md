@@ -52,21 +52,36 @@ print(response)
 
 ### GetStatus
 
-Get the current status of the daemon.
+Get the current status of the daemon and Ramalama service.
 
-**Signature**: `GetStatus() → status: string`
+**Signature**: `GetStatus() → status_json: string`
 
 **Returns**:
-- `status` (string): Current daemon status
-  - `"ready"` - Ready to process messages
-  - `"thinking"` - Currently processing a message
-  - `"error"` - Error state
-  - `"initializing"` - Starting up
+- `status_json` (string): JSON object with system status:
+  - `daemon_status` (string): Daemon state - `"ready"`, `"thinking"`, `"error"`, `"initializing"`
+  - `ramalama_status` (string): Ramalama state - `"ready"`, `"loading"`, `"not_started"`, `"not_installed"`, `"error"`
+  - `ramalama_message` (string): Human-readable status message
+  - `ready` (boolean): True only when both daemon and Ramalama are ready
 
 **Example (busctl)**:
 ```bash
 busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai GetStatus
+# s '{"daemon_status":"ready","ramalama_status":"ready","ramalama_message":"Model loaded and ready","ready":true}'
 ```
+
+**Status Values**:
+- **ramalama_status**:
+  - `"ready"` - Model loaded, API responding, ready for queries
+  - `"loading"` - Service active or activating, model loading into memory
+  - `"not_started"` - Service exists but not running
+  - `"not_installed"` - Ramalama not installed
+  - `"error"` - Service failed or API error
+
+**UI Integration**:
+- Poll this method at 1-second intervals while system is not ready
+- Disable input/send UI elements when `ready === false`
+- Show `ramalama_message` to user while loading
+- Stop polling when `ready === true`
 
 ---
 
@@ -83,9 +98,199 @@ busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai ClearHist
 
 ---
 
+### SetRAGConfig
+
+Configure and index RAG (Retrieval-Augmented Generation) documents.
+
+**Signature**: `SetRAGConfig(folder_path: string, format: string, enable_ocr: boolean) → success: boolean`
+
+**Parameters**:
+- `folder_path` (string): Path to documents folder
+- `format` (string): Vector database format (`qdrant`, `json`, `markdown`, `milvus`)
+- `enable_ocr` (boolean): Enable OCR for PDFs with images
+
+**Returns**:
+- `success` (boolean): True if indexing started successfully
+
+**Example (busctl)**:
+```bash
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai SetRAGConfig sss "/home/user/Documents" "qdrant" false
+```
+
+**Notes**:
+- Indexing happens in background
+- Progress updates via `RAGIndexing*` signals
+- Supported formats: PDF, DOCX, PPTX, XLSX, HTML, Markdown, AsciiDoc, TXT
+
+---
+
+### SetRagEnabled
+
+Enable or disable RAG mode with optional mode selection.
+
+**Signature**: `SetRagEnabled(enabled: boolean, mode: string) → result_json: string`
+
+**Parameters**:
+- `enabled` (boolean): True to enable RAG, False to disable
+- `mode` (string): RAG mode - `"augment"` (docs + knowledge), `"strict"` (docs only), or `"hybrid"` (docs preferred). Default: `"augment"`
+
+**Returns**:
+- `result_json` (string): JSON string with success status and message
+
+**Example JSON Response**:
+```json
+{
+    "success": true,
+    "message": "RAG enabled successfully (mode: augment)"
+}
+```
+
+**Example (busctl)**:
+```bash
+# Enable RAG with augment mode (default)
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai SetRagEnabled bs true "augment"
+
+# Enable RAG with strict mode (docs only)
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai SetRagEnabled bs true "strict"
+
+# Disable RAG
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai SetRagEnabled bs false "augment"
+```
+
+**RAG Modes**:
+- **augment** (default): AI uses both indexed documents AND general knowledge. Documents provide context, but AI can supplement with general knowledge when needed.
+- **strict**: AI answers ONLY from indexed documents. If answer not in docs, responds with "I don't know". Good for compliance/legal use cases.
+- **hybrid**: AI prioritizes indexed documents but may supplement with general knowledge. Indicates when using general knowledge.
+
+**Notes**:
+- Requires RAG database to exist (index documents first with SetRAGConfig)
+- Restarts ramalama service with new configuration
+- Mode change takes effect immediately (service restart)
+
+---
+
+### DisableRAG
+
+Disable RAG and clear the index.
+
+**Signature**: `DisableRAG() → success: boolean`
+
+**Returns**:
+- `success` (boolean): True if disabled successfully
+
+**Example (busctl)**:
+```bash
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai DisableRAG
+```
+
+---
+
+### GetRAGStatus
+
+Get current RAG status.
+
+**Signature**: `GetRAGStatus(source_path: string, rag_enabled: boolean) → status_json: string`
+
+**Parameters**:
+- `source_path` (string): Configured source path
+- `rag_enabled` (boolean): Whether RAG is enabled in settings
+
+**Returns**:
+- `status_json` (string): JSON string with RAG status
+
+**Status JSON Structure**:
+```json
+{
+    "enabled": true,
+    "indexed": true,
+    "file_count": 150,
+    "last_indexed": "2025-11-14T10:30:00Z",
+    "format": "qdrant",
+    "db_path": "/home/user/.local/share/henzai/rag-db",
+    "source_path": "/home/user/Documents",
+    "ocr_enabled": false,
+    "error": null
+}
+```
+
+**Example (busctl)**:
+```bash
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai GetRAGStatus sb "/home/user/Documents" true
+```
+
+---
+
+### ReindexRAG
+
+Trigger RAG reindexing with current configuration.
+
+**Signature**: `ReindexRAG() → success: boolean`
+
+**Returns**:
+- `success` (boolean): True if reindexing started
+
+**Example (busctl)**:
+```bash
+busctl --user call org.gnome.henzai /org/gnome/henzai org.gnome.henzai ReindexRAG
+```
+
+**Notes**:
+- Uses existing configuration from previous indexing
+- Fails if no existing configuration found
+
+---
+
 ## Signals
 
-Currently no signals are emitted. Future versions may add:
+### RAGIndexingStarted
+
+Emitted when RAG indexing starts.
+
+**Signature**: `RAGIndexingStarted(message: string)`
+
+**Parameters**:
+- `message` (string): Status message (e.g., "Indexing documents from /path")
+
+---
+
+### RAGIndexingProgress
+
+Emitted during RAG indexing to report progress.
+
+**Signature**: `RAGIndexingProgress(message: string, percent: int32)`
+
+**Parameters**:
+- `message` (string): Progress message
+- `percent` (int32): Completion percentage (0-100)
+
+---
+
+### RAGIndexingComplete
+
+Emitted when RAG indexing completes successfully.
+
+**Signature**: `RAGIndexingComplete(message: string, file_count: int32)`
+
+**Parameters**:
+- `message` (string): Completion message
+- `file_count` (int32): Number of files indexed
+
+---
+
+### RAGIndexingFailed
+
+Emitted when RAG indexing fails.
+
+**Signature**: `RAGIndexingFailed(error: string)`
+
+**Parameters**:
+- `error` (string): Error message
+
+---
+
+## Legacy Signals
+
+Currently no other signals are emitted. Future versions may add:
 - `ThinkingStatusChanged(is_thinking: boolean)` - Status change notifications
 - `ErrorOccurred(error: string)` - Error notifications
 

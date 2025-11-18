@@ -664,8 +664,13 @@ export class ChatPanel {
             return;
         }
 
+        // Check if RAG is enabled
+        const statusJson = await this._daemonClient.getStatus();
+        const status = JSON.parse(statusJson);
+        const ragEnabled = status.rag_enabled || false;
+        
         // Create assistant message with user query as header (will be filled by streaming)
-        const assistantMsg = this._addMessage('assistant', '', { userQuery: text });
+        const assistantMsg = this._addMessage('assistant', '', { userQuery: text, ragEnabled });
         
         // Find the content box
         const contentBox = assistantMsg.get_children().find(child => 
@@ -1144,6 +1149,7 @@ export class ChatPanel {
     _addMessage(role, text, options = {}) {
         const isWelcome = options.isWelcome || false;
         const userQuery = options.userQuery || null;  // User query for assistant messages
+        const ragEnabled = options.ragEnabled || false;  // Whether RAG was used for this query
         
         const messageBox = new St.BoxLayout({
             style_class: isWelcome ? 'henzai-message henzai-welcome-message' : `henzai-message henzai-message-${role}`,
@@ -1199,6 +1205,20 @@ export class ChatPanel {
             headerBox.add_child(chevron);
             headerBox.add_child(arrow);
             headerBox.add_child(headerText);
+            
+            // Add RAG badge if RAG is enabled
+            // NOTE: This badge indicates RAG is available, not that it was necessarily used
+            // for this specific query. rag_framework decides dynamically if documents are relevant.
+            // See: RAMALAMA_RFE.md Issue #4 for metadata exposure request
+            if (ragEnabled) {
+                const ragBadge = new St.Label({
+                    text: '📚 RAG Available',
+                    style_class: 'henzai-rag-badge',
+                    style: 'margin-left: 8px; padding: 2px 8px; background-color: rgba(52, 152, 219, 0.2); border-radius: 4px; font-size: 9pt; color: #3498db;',
+                });
+                headerBox.add_child(ragBadge);
+            }
+            
             queryHeader.set_child(headerBox);
             
             // Full query text content box (hidden by default)
@@ -1559,6 +1579,7 @@ export class ChatPanel {
                 // Daemon not connected yet, retry
                 if (this._statusLabel) {
                     this._statusLabel.text = '⏳ Connecting to daemon...';
+                    this._statusLabel.set_style('font-size: 9pt; color: #999; margin-left: 8px;');
                     this._statusLabel.visible = true;
                 }
                 return GLib.SOURCE_CONTINUE;  // Continue polling
@@ -1569,10 +1590,11 @@ export class ChatPanel {
                     if (error) {
                         console.error('henzai: Error checking status:', error);
                         if (this._statusLabel) {
-                            this._statusLabel.text = '⚠️  Connection error';
+                            this._statusLabel.text = '⚠️ Connection error';
+                            this._statusLabel.set_style('font-size: 9pt; color: #dc2626; margin-left: 8px;');
                             this._statusLabel.visible = true;
                         }
-                        // Don't return here - the outer timeout will continue polling
+                        // Keep UI disabled - don't enable on errors
                         return;
                     }
                     
@@ -1581,7 +1603,7 @@ export class ChatPanel {
                         console.log('henzai: Status:', status);
                         
                         if (status.ready) {
-                            // Everything is ready!
+                            // Everything is ready - ENABLE UI
                             if (this._sendButton) {
                                 this._sendButton.reactive = true;
                                 this._sendButton.opacity = 255;
@@ -1594,13 +1616,13 @@ export class ChatPanel {
                                 this._statusLabel.visible = false;
                             }
                             
-                            // Stop polling - return false to stop the timeout
+                            // Stop polling - system is ready
                             if (this._readinessTimeout) {
                                 GLib.source_remove(this._readinessTimeout);
                                 this._readinessTimeout = null;
                             }
                         } else {
-                            // Not ready yet - show appropriate status and keep UI disabled
+                            // Not ready - KEEP UI DISABLED and show status
                             if (this._sendButton) {
                                 this._sendButton.reactive = false;
                                 this._sendButton.opacity = 128;
@@ -1610,7 +1632,8 @@ export class ChatPanel {
                                 this._inputEntry.opacity = 179;  // 0.7 * 255
                             }
                             
-                            if (status.ramalama_status === 'loading' || status.ramalama_status === 'starting') {
+                            // Show appropriate status message
+                            if (status.ramalama_status === 'loading') {
                                 if (this._statusLabel) {
                                     // Animated spinner using Unicode characters
                                     if (!this._spinnerIndex) this._spinnerIndex = 0;
@@ -1646,8 +1669,9 @@ export class ChatPanel {
                                     this._statusLabel.visible = true;
                                 }
                             } else if (status.ramalama_message) {
+                                // Any other status with a message
                                 if (this._statusLabel) {
-                                    this._spinnerIndex = 0;  // Reset spinner when not loading
+                                    this._spinnerIndex = 0;
                                     this._statusLabel.text = `⚠️ ${status.ramalama_message}`;
                                     this._statusLabel.set_style('font-size: 9pt; color: #d97706; margin-left: 8px;');  // Orange for warning
                                     this._statusLabel.visible = true;
@@ -1656,10 +1680,12 @@ export class ChatPanel {
                         }
                     } catch (e) {
                         console.error('henzai: Error parsing status JSON:', e);
+                        // Keep UI disabled on parse errors
                     }
                 });
             } catch (e) {
                 console.error('henzai: Error calling GetStatus:', e);
+                // Keep UI disabled on call errors
             }
             
             return GLib.SOURCE_CONTINUE;  // Continue polling

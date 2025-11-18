@@ -47,20 +47,63 @@ class LLMClient:
         'claude-3-opus',       # With extended thinking
     ]
     
-    def __init__(self, model: Optional[str] = None, api_url: str = "http://127.0.0.1:8080", reasoning_enabled: bool = False):
+    def __init__(self, model: Optional[str] = None, api_url: str = "http://127.0.0.1:8080", reasoning_enabled: bool = False, rag_enabled: bool = False):
         """
         Initialize the LLM client.
         
         Args:
             model: Model name to use (default: auto-detect or use llama3.2)
-            api_url: Ramalama API endpoint URL
+            api_url: Ramalama API endpoint URL (deprecated - use base_url instead)
             reasoning_enabled: Whether to enable reasoning mode for capable models
+            rag_enabled: Whether RAG is enabled (affects port selection)
         """
-        self.api_url = api_url
+        # Support both old api_url parameter and new base_url logic
+        if api_url != "http://127.0.0.1:8080":
+            # Custom API URL provided (backward compatibility)
+            self.api_url = api_url
+            self.llm_url = None
+            self.base_url = None
+        else:
+            # Use base URL and determine ports based on RAG mode
+            self.base_url = "http://127.0.0.1"
+            
+            # When RAG is enabled, ramalama starts TWO containers:
+            # - Port 8080: rag_framework (RAG proxy)
+            # - Port 8081: llama-server (direct LLM)
+            # We use port 8080 (RAG proxy) which handles retrieval automatically
+            if rag_enabled:
+                self.api_url = f"{self.base_url}:8080"  # RAG proxy
+                self.llm_url = f"{self.base_url}:8081"  # Direct LLM (for fallback)
+            else:
+                self.api_url = f"{self.base_url}:8080"  # Direct LLM
+                self.llm_url = None
+        
         self.model = model or "llama3.2"
         self.reasoning_enabled = reasoning_enabled
+        self.rag_enabled = rag_enabled
         self._current_request = None  # Track current streaming request for cancellation
-        logger.info(f"Initialized LLM client with model: {self.model}, API: {api_url}, reasoning: {reasoning_enabled}")
+        logger.info(f"Initialized LLM client with model: {self.model}, API: {self.api_url}, reasoning: {reasoning_enabled}, RAG: {rag_enabled}")
+    
+    def set_rag_enabled(self, enabled: bool):
+        """
+        Enable or disable RAG mode (changes API endpoint).
+        
+        Args:
+            enabled: Whether RAG should be enabled
+        """
+        if enabled != self.rag_enabled:
+            self.rag_enabled = enabled
+            
+            if self.base_url:
+                # Only update ports if we're using base_url logic
+                if self.rag_enabled:
+                    self.api_url = f"{self.base_url}:8080"  # RAG proxy
+                    self.llm_url = f"{self.base_url}:8081"  # Direct LLM
+                else:
+                    self.api_url = f"{self.base_url}:8080"  # Direct LLM
+                    self.llm_url = None
+                
+                logger.info(f"RAG mode changed: enabled={enabled}, api_url={self.api_url}")
     
     def supports_reasoning(self) -> bool:
         """
@@ -138,9 +181,17 @@ class LLMClient:
             Model name string
         """
         try:
+            import os
+            from pathlib import Path
+            
+            # Use full path since systemd service doesn't have ~/.local/bin in PATH
+            ramalama_bin = os.path.expanduser('~/.local/bin/ramalama')
+            if not Path(ramalama_bin).exists():
+                ramalama_bin = '/usr/bin/ramalama'  # Fallback to system install
+            
             # Try to list available models
             result = subprocess.run(
-                ['ramalama', 'list'],
+                [ramalama_bin, 'list'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -174,9 +225,16 @@ class LLMClient:
         try:
             import subprocess
             import re
+            import os
+            from pathlib import Path
+            
+            # Use full path since systemd service doesn't have ~/.local/bin in PATH
+            ramalama_bin = os.path.expanduser('~/.local/bin/ramalama')
+            if not Path(ramalama_bin).exists():
+                ramalama_bin = '/usr/bin/ramalama'  # Fallback to system install
             
             result = subprocess.run(
-                ['ramalama', 'list'],
+                [ramalama_bin, 'list'],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -347,13 +405,14 @@ Please provide a natural language response to the user about what was done."""
             logger.error(f"Error generating response with tool results: {e}", exc_info=True)
             return "I completed the actions but encountered an error generating a response."
     
-    def _build_messages(self, message: str, context: List[Dict[str, str]] = None) -> List[Dict[str, str]]:
+    def _build_messages(self, message: str, context: List[Dict[str, str]] = None, use_rag: bool = False) -> List[Dict[str, str]]:
         """
         Build the messages array for chat completion API.
         
         Args:
             message: Current user message
             context: Previous conversation context
+            use_rag: Whether to retrieve and include RAG context
             
         Returns:
             List of message dicts with role and content
@@ -361,6 +420,21 @@ Please provide a natural language response to the user about what was done."""
         # Generate system prompt with current model name
         model_display_name = self.model.split('/')[-1].replace(':latest', '')
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(model_name=model_display_name)
+        
+        # Retrieve RAG context if enabled and available
+        rag_context = []
+        if use_rag and self.rag_manager:
+            try:
+                rag_context = self.rag_manager.retrieve_context(message)
+                if rag_context:
+                    logger.info(f"Retrieved {len(rag_context)} RAG context chunks")
+            except Exception as e:
+                logger.error(f"Error retrieving RAG context: {e}", exc_info=True)
+        
+        # Add RAG context to system prompt if available
+        if rag_context:
+            rag_text = "\n\n---\n\n".join(rag_context)
+            system_prompt += f"\n\n**Relevant Context from Documents:**\n\n{rag_text}\n\nUse this context to help answer the user's question."
         
         messages = [
             {"role": "system", "content": system_prompt}

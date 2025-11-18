@@ -6,7 +6,10 @@ Before=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ramalama serve --port 8080 --ctx-size 8192 --cache-reuse 512 ollama://library/deepseek-r1:14b
+# RAG support temporarily disabled - ramalama v0.12.4 --rag flag is broken
+# Will re-enable when ramalama properly supports serving with local vector databases
+# Tracking: https://github.com/containers/ramalama/issues (search for RAG serve issues)
+ExecStart=/usr/bin/ramalama serve --ctx-size 8192 --cache-reuse 512 ollama://library/deepseek-r1:14b
 Restart=on-failure
 RestartSec=5s
 

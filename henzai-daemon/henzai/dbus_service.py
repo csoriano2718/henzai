@@ -5,10 +5,12 @@ and the Python daemon.
 """
 
 import logging
+import threading
 from dasbus.connection import SessionMessageBus
 from dasbus.server.interface import dbus_interface, dbus_signal
 from dasbus.typing import Str
 import json
+from pathlib import Path
 from gi.repository import GLib
 from .tools import ToolExecutor
 
@@ -23,20 +25,34 @@ OBJECT_PATH = "/org/gnome/henzai"
 class henzaiService:
     """henzai D-Bus service implementation."""
     
-    def __init__(self, llm_client, memory_store):
+    def __init__(self, llm_client, memory_store, rag_manager=None):
         """
         Initialize the henzai service.
         
         Args:
             llm_client: LLM client instance for AI inference
             memory_store: Memory store for conversation history
+            rag_manager: RAG manager instance (optional)
         """
         self.llm = llm_client
         self.memory = memory_store
         self.tool_executor = ToolExecutor()
+        self.rag = rag_manager  # RAG manager
         self.status = "initializing"
         self._stop_generation = False  # Flag for stopping generation
         self._current_generation_id = None  # Track current generation
+        
+        # RAG indexing state tracking (prevent concurrent indexing)
+        self._rag_indexing_active = False
+        self._rag_indexing_thread = None
+        self._pending_service_restart = False  # Deferred restart flag
+        self._rag_mode = "augment"  # Default RAG mode
+        
+        # Service restart protection
+        self._service_restarting = False
+        self._service_restart_lock = threading.Lock()
+        self._pending_rag_change = None  # Store pending RAG mode change
+        self._rag_mode_change_timer = None  # Debounce timer for rapid changes
         
         # Cache for Ramalama status checks to reduce HTTP overhead
         self._ramalama_status_cache = None
@@ -50,6 +66,26 @@ class henzaiService:
         
         self.status = "ready"
         logger.info(f"D-Bus service registered: {SERVICE_NAME}")
+    
+    def cleanup(self):
+        """
+        Cleanup resources when daemon shuts down.
+        Cancels any pending timers to prevent resource leaks.
+        """
+        logger.info("Cleaning up henzai service resources...")
+        
+        # Cancel any pending RAG mode change timer
+        if self._rag_mode_change_timer:
+            logger.info("Canceling pending RAG mode change timer")
+            self._rag_mode_change_timer.cancel()
+            self._rag_mode_change_timer = None
+        
+        # Wait for any active RAG indexing to complete
+        if self._rag_indexing_active and self._rag_indexing_thread:
+            logger.info("Waiting for RAG indexing to complete...")
+            self._rag_indexing_thread.join(timeout=5)
+        
+        logger.info("Service cleanup complete")
     
     def SendMessage(self, message: str) -> str:
         """
@@ -123,6 +159,11 @@ class henzaiService:
             - ramalama_status: "ready", "loading", "unavailable", "not_installed"
             - ramalama_message: Human-readable status message
             - ready: Boolean indicating if system is ready
+            - status: Combined status for UI ("ready", "loading", "error")
+            - message: Human-readable combined message
+            - rag_enabled: Boolean indicating if RAG is active
+            - rag_port: Port for RAG queries (8080 if RAG enabled, None otherwise)
+            - llm_port: Port for direct LLM queries (8081 if RAG enabled, 8080 otherwise)
         """
         import requests
         import time
@@ -135,13 +176,16 @@ class henzaiService:
             # Return cached status
             cached_status = self._ramalama_status_cache.copy()
             cached_status["daemon_status"] = self.status
-            cached_status["ready"] = self.status == "ready" and cached_status["ramalama_status"] == "ready"
+            cached_status["ready"] = self.status == "ready" and cached_status.get("ramalama_status") == "ready"
             import json
             return json.dumps(cached_status)
         
         # Check Ramalama availability (not cached or cache expired)
         ramalama_status = "unavailable"
         ramalama_message = ""
+        rag_enabled = False
+        rag_healthy = False
+        llm_healthy = False
         
         # First, check if Ramalama service exists and is active
         try:
@@ -168,33 +212,72 @@ class henzaiService:
                     ramalama_status = "not_started"
                     ramalama_message = "Ramalama service is not running. Start it with: systemctl --user start ramalama.service"
                 else:
-                    ramalama_status = "starting"
-                    ramalama_message = "Ramalama service is starting..."
+                    # Use "loading" for consistency (service is activating = model will load soon)
+                    ramalama_status = "loading"
+                    ramalama_message = "Loading model into memory..."
             else:
-                # Service is active, check if API is ready
+                # Service is active, check if API is ready and detect RAG mode
                 try:
-                    # Check /health endpoint (using 127.0.0.1 to avoid IPv6 issues with pasta)
-                    health_response = requests.get(
-                        f"{self.llm.api_url}/health",
+                    # Check /health endpoint on port 8080 (using 127.0.0.1 to avoid IPv6 issues)
+                    health_response_8080 = requests.get(
+                        "http://127.0.0.1:8080/health",
                         timeout=2
                     )
-                    if health_response.status_code == 200 and health_response.json().get('status') == 'ok':
-                        # Health OK - model is loaded and ready
-                        ramalama_status = "ready"
-                        ramalama_message = "Model loaded and ready"
+                    
+                    if health_response_8080.status_code == 200:
+                        health_data = health_response_8080.json()
+                        
+                        # Check if this is RAG proxy or direct LLM
+                        if health_data.get('rag') == 'ok':
+                            # RAG proxy is responding - check if both ports are healthy
+                            rag_enabled = True
+                            rag_healthy = True
+                            
+                            # Check port 8081 (direct LLM) health
+                            try:
+                                health_response_8081 = requests.get(
+                                    "http://127.0.0.1:8081/health",
+                                    timeout=2
+                                )
+                                llm_healthy = (health_response_8081.status_code == 200)
+                            except:
+                                llm_healthy = False
+                            
+                            # Both ports must be healthy for RAG to be ready
+                            if rag_healthy and llm_healthy:
+                                ramalama_status = "ready"
+                                ramalama_message = "Model loaded and ready (RAG enabled)"
+                            else:
+                                ramalama_status = "loading"
+                                ramalama_message = "Loading model with RAG..."
+                        else:
+                            # Direct LLM mode (no RAG)
+                            rag_enabled = False
+                            if health_data.get('status') == 'ok':
+                                ramalama_status = "ready"
+                                ramalama_message = "Model loaded and ready"
+                            else:
+                                ramalama_status = "loading"
+                                ramalama_message = "Service starting, model loading..."
                     else:
                         ramalama_status = "loading"
                         ramalama_message = "Service starting, model loading..."
+                        
                 except requests.exceptions.ConnectionError:
                     # Service running but API not responding yet (model still loading)
                     ramalama_status = "loading"
-                    ramalama_message = "Loading model into memory (large models take 2-3 minutes)..."
+                    ramalama_message = "Loading model into memory..."
                 except requests.exceptions.Timeout:
                     ramalama_status = "slow"
                     ramalama_message = "Ramalama is slow to respond"
                 except Exception as e:
-                    ramalama_status = "error"
-                    ramalama_message = f"API error: {str(e)}"
+                    # Treat connection-related errors as loading
+                    if "connection" in str(e).lower() or "refused" in str(e).lower():
+                        ramalama_status = "loading"
+                        ramalama_message = "Loading model into memory..."
+                    else:
+                        ramalama_status = "error"
+                        ramalama_message = f"API error: {str(e)}"
                     
         except FileNotFoundError:
             ramalama_status = "not_installed"
@@ -206,20 +289,39 @@ class henzaiService:
             ramalama_status = "error"
             ramalama_message = f"System error: {str(e)}"
         
-        # Cache the ramalama status portion
-        self._ramalama_status_cache = {
-            "ramalama_status": ramalama_status,
-            "ramalama_message": ramalama_message
-        }
-        self._ramalama_status_cache_time = current_time
+        # Determine overall ready state
+        ready = self.status == "ready" and ramalama_status == "ready"
+        
+        # Determine combined status for UI
+        if ready:
+            combined_status = "ready"
+            combined_message = ramalama_message
+        elif ramalama_status == "loading":
+            combined_status = "loading"
+            combined_message = ramalama_message
+        elif ramalama_status in ["error", "not_installed", "not_started"]:
+            combined_status = "error"
+            combined_message = ramalama_message
+        else:
+            combined_status = "unavailable"
+            combined_message = ramalama_message
         
         # Build status response
         status_data = {
             "daemon_status": self.status,
             "ramalama_status": ramalama_status,
             "ramalama_message": ramalama_message,
-            "ready": self.status == "ready" and ramalama_status == "ready"
+            "ready": ready,
+            "status": combined_status,
+            "message": combined_message,
+            "rag_enabled": rag_enabled,
+            "rag_port": 8080 if rag_enabled else None,
+            "llm_port": 8081 if rag_enabled else 8080
         }
+        
+        # Cache the status
+        self._ramalama_status_cache = status_data.copy()
+        self._ramalama_status_cache_time = current_time
         
         import json
         return json.dumps(status_data)
@@ -240,6 +342,21 @@ class henzaiService:
             GLib.idle_add(emit)
         except Exception as e:
             logger.error(f"Error clearing history: {e}", exc_info=True)
+    
+    def GetConversationHistory(self) -> Str:
+        """
+        Get the current conversation history.
+        
+        Returns:
+            JSON string containing the conversation history as a list of messages.
+            Each message has 'role' and 'content' fields.
+        """
+        try:
+            history = self.memory.get_history()
+            return json.dumps(history)
+        except Exception as e:
+            logger.error(f"Failed to get conversation history: {e}")
+            return json.dumps([])
     
     def NewConversation(self) -> str:
         """
@@ -710,12 +827,15 @@ class henzaiService:
                 
                 if self._stop_generation or self._current_generation_id != generation_id:
                     logger.info(f"Generation stopped or superseded: {generation_id}")
+                    self._current_generation_id = None  # Clear generation ID
                     self.status = "ready"
                     # Emit completion signal even if stopped
                     def emit_complete():
                         try:
                             self.StreamingComplete(generation_id)
                             logger.info(f"StreamingComplete signal emitted (stopped): {generation_id}")
+                            # P0 FIX #2b: Check for pending service restart after generation
+                            self._check_pending_service_restart()
                         except Exception as e:
                             logger.error(f"Error emitting StreamingComplete: {e}", exc_info=True)
                         return False
@@ -728,6 +848,7 @@ class henzaiService:
                 # Save to memory
                 self.memory.add_conversation(message, full_response)
                 
+                self._current_generation_id = None  # Clear generation ID
                 self.status = "ready"
                 logger.info("Streaming response completed")
                 
@@ -736,6 +857,8 @@ class henzaiService:
                     try:
                         self.StreamingComplete(generation_id)
                         logger.info(f"StreamingComplete signal emitted (success): {generation_id}")
+                        # P0 FIX #2b: Check for pending service restart after generation
+                        self._check_pending_service_restart()
                     except Exception as e:
                         logger.error(f"Error emitting StreamingComplete: {e}", exc_info=True)
                     return False
@@ -758,6 +881,8 @@ class henzaiService:
                     try:
                         self.StreamingComplete(generation_id)
                         logger.info(f"StreamingComplete signal emitted (error): {generation_id}")
+                        # P0 FIX #2b: Check for pending service restart after generation
+                        self._check_pending_service_restart()
                     except Exception as e:
                         logger.error(f"Error emitting StreamingComplete: {e}", exc_info=True)
                     return False
@@ -784,4 +909,647 @@ class henzaiService:
         self.llm.stop_current_generation()
         self.status = "ready"
         return True
+    
+    # RAG Methods
+    #
+    # NOTE: Current implementation uses wrapper script + service restart
+    # This is temporary until Ramalama adds runtime RAG API
+    # Future implementation (when API available):
+    #   - Remove service restart logic
+    #   - Call POST /v1/rag/enable API instead
+    #   - Call POST /v1/rag/disable API instead
+    #   - Zero downtime, instant enable/disable
+    # See: https://github.com/containers/ramalama/issues/XXX (TODO: update with issue number)
+    
+    def SetRAGConfig(self, folder_path: str, format: str, enable_ocr: bool) -> bool:
+        """
+        Configure and index RAG documents.
+        
+        Args:
+            folder_path: Path to documents folder
+            format: RAG format (qdrant/json/markdown/milvus)
+            enable_ocr: Enable OCR for PDFs
+            
+        Returns:
+            True if indexing started successfully
+        """
+        if not self.rag:
+            logger.error("RAG manager not initialized")
+            return False
+        
+        # P0 FIX #1: Prevent concurrent indexing
+        if self._rag_indexing_active:
+            logger.warning("RAG indexing already in progress, rejecting new request")
+            # Emit error signal
+            def emit_error():
+                try:
+                    self.RAGIndexingFailed("Indexing already in progress")
+                except Exception as e:
+                    logger.error(f"Error emitting signal: {e}")
+                return False
+            GLib.idle_add(emit_error)
+            return False
+        
+        logger.info(f"SetRAGConfig called: folder={folder_path}, format={format}, ocr={enable_ocr}")
+        
+        # ALWAYS check for and stop any running RAG containers before indexing
+        # (they might be lingering even if RAG is "disabled" in our state)
+        logger.info("Checking for running RAG containers")
+        try:
+            import subprocess
+            # Find all RAG containers (ramalama doesn't clean them up properly)
+            result = subprocess.run(
+                ['podman', 'ps', '-a', '--format', '{{.ID}}'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                all_containers = result.stdout.strip().split('\n')
+                for container_id in all_containers:
+                    # Check if it's a RAG container by inspecting its command
+                    inspect_result = subprocess.run(
+                        ['podman', 'inspect', '--format', '{{.Config.Cmd}}', container_id],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if 'rag_framework' in inspect_result.stdout:
+                        logger.info(f"Found RAG container {container_id} - stopping it")
+                        subprocess.run(['podman', 'stop', '-t', '2', container_id], timeout=10)
+                        subprocess.run(['podman', 'rm', '-f', container_id], timeout=10)
+                        logger.info(f"Stopped and removed RAG container {container_id}")
+                logger.info("RAG containers cleanup complete")
+            else:
+                logger.info("No containers found")
+        except Exception as e:
+            logger.warning(f"Error stopping RAG containers (continuing anyway): {e}")
+        
+        # Wait for the lock file to be released
+        import time
+        time.sleep(2)
+        
+        # Check if RAG is currently enabled - need to disable it first
+        rag_was_enabled = self.llm.rag_enabled
+        if rag_was_enabled:
+            logger.info("RAG is currently enabled - disabling temporarily for indexing")
+            # Disable RAG (restarts ramalama without --rag flag)
+            self._restart_ramalama_service(enable_rag=False)
+            self.llm.set_rag_enabled(False)
+            logger.info("RAG disabled")
+        
+        # Mark indexing as active
+        self._rag_indexing_active = True
+        
+        # Start indexing in background thread
+        import threading
+        
+        def background_indexing():
+            try:
+                # Emit indexing started signal
+                def emit_started():
+                    try:
+                        self.RAGIndexingStarted(f"Indexing documents from {folder_path}")
+                    except Exception as e:
+                        logger.error(f"Error emitting RAGIndexingStarted: {e}")
+                    return False
+                GLib.idle_add(emit_started)
+                
+                # Progress callback
+                def on_progress(message: str, percent: int):
+                    def emit_progress():
+                        try:
+                            self.RAGIndexingProgress(message, percent)
+                        except Exception as e:
+                            logger.error(f"Error emitting RAGIndexingProgress: {e}")
+                        return False
+                    GLib.idle_add(emit_progress)
+                
+                # Index documents
+                result = self.rag.index_documents(
+                    folder_path, 
+                    format=format,
+                    enable_ocr=enable_ocr,
+                    on_progress=on_progress
+                )
+                
+                if result.success:
+                    # Emit success signal
+                    def emit_complete():
+                        try:
+                            self.RAGIndexingComplete(
+                                f"Indexed {result.file_count} files successfully",
+                                result.file_count
+                            )
+                        except Exception as e:
+                            logger.error(f"Error emitting RAGIndexingComplete: {e}")
+                        return False
+                    GLib.idle_add(emit_complete)
+                    
+                    # Re-enable RAG if it was enabled before indexing
+                    if rag_was_enabled:
+                        logger.info("Re-enabling RAG after successful indexing")
+                        self._restart_ramalama_service(enable_rag=True)
+                        self.llm.set_rag_enabled(True)
+                        logger.info("RAG re-enabled successfully")
+                else:
+                    # Emit error signal
+                    def emit_error():
+                        try:
+                            self.RAGIndexingFailed(result.error or "Unknown error")
+                        except Exception as e:
+                            logger.error(f"Error emitting RAGIndexingFailed: {e}")
+                        return False
+                    GLib.idle_add(emit_error)
+                    
+            except Exception as e:
+                logger.error(f"Error in background indexing: {e}", exc_info=True)
+                def emit_error():
+                    try:
+                        self.RAGIndexingFailed(str(e))
+                    except Exception as e:
+                        logger.error(f"Error emitting RAGIndexingFailed: {e}")
+                    return False
+                GLib.idle_add(emit_error)
+            finally:
+                # Clear indexing state
+                self._rag_indexing_active = False
+                logger.info("RAG indexing thread finished")
+        
+        thread = threading.Thread(target=background_indexing, daemon=True)
+        self._rag_indexing_thread = thread
+        thread.start()
+        
+        return True
+    
+    def DisableRAG(self) -> bool:
+        """
+        Disable RAG and clear index.
+        
+        Returns:
+            True if disabled successfully
+        """
+        if not self.rag:
+            logger.error("RAG manager not initialized")
+            return False
+        
+        logger.info("DisableRAG called")
+        
+        try:
+            self.rag.clear_index()
+            
+            # Restart ramalama.service to deactivate RAG
+            # The wrapper script will detect missing RAG database and run without --rag flag
+            logger.info("Restarting ramalama.service to deactivate RAG...")
+            try:
+                subprocess.run(
+                    ['systemctl', '--user', 'restart', 'ramalama.service'],
+                    check=True,
+                    capture_output=True,
+                    timeout=10
+                )
+                logger.info("✓ Ramalama service restarted with RAG disabled")
+            except subprocess.TimeoutExpired:
+                logger.error("Timeout restarting ramalama.service")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to restart ramalama.service: {e.stderr.decode()}")
+            except Exception as e:
+                logger.error(f"Error restarting ramalama.service: {e}")
+            
+            logger.info("RAG disabled successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error disabling RAG: {e}", exc_info=True)
+            return False
+    
+    def GetRAGStatus(self, source_path: str, rag_enabled: bool) -> str:
+        """
+        Get RAG status as JSON.
+        
+        Args:
+            source_path: Current configured source path
+            rag_enabled: Whether RAG is enabled in settings
+            
+        Returns:
+            JSON string with RAG status
+        """
+        if not self.rag:
+            return json.dumps({
+                "enabled": False,
+                "indexed": False,
+                "file_count": 0,
+                "last_indexed": None,
+                "format": "qdrant",
+                "db_path": "",
+                "source_path": "",
+                "ocr_enabled": False,
+                "error": "RAG manager not initialized"
+            })
+        
+        try:
+            status = self.rag.get_status(source_path, rag_enabled)
+            return status.to_json()
+        except Exception as e:
+            logger.error(f"Error getting RAG status: {e}", exc_info=True)
+            return json.dumps({
+                "enabled": False,
+                "indexed": False,
+                "file_count": 0,
+                "last_indexed": None,
+                "format": "qdrant",
+                "db_path": "",
+                "source_path": source_path,
+                "ocr_enabled": False,
+                "error": str(e)
+            })
+    
+    def ReindexRAG(self) -> bool:
+        """
+        Trigger RAG reindexing with current config.
+        
+        Returns:
+            True if reindexing started
+        """
+        if not self.rag:
+            logger.error("RAG manager not initialized")
+            return False
+        
+        logger.info("ReindexRAG called")
+        
+        # Load current config from metadata
+        metadata = self.rag._load_metadata()
+        if metadata is None:
+            logger.error("No existing RAG configuration found")
+            return False
+        
+        source_path = metadata.get('source_path')
+        format = metadata.get('format', 'qdrant')
+        enable_ocr = metadata.get('ocr_enabled', False)
+        
+        # Call SetRAGConfig with existing config
+        return self.SetRAGConfig(source_path, format, enable_ocr)
+    
+    def SetRagEnabled(self, enabled: bool, mode: str = "augment") -> Str:
+        """
+        Enable or disable RAG mode.
+        
+        Args:
+            enabled: True to enable RAG, False to disable
+            mode: RAG mode - "augment" (docs + knowledge), "strict" (docs only), or "hybrid" (docs preferred)
+        
+        Returns:
+            JSON with success status
+        """
+        try:
+            logger.info(f"SetRagEnabled called: {enabled}, mode: {mode}")
+            
+            # Priority 1: Check if service is already restarting
+            with self._service_restart_lock:
+                if self._service_restarting:
+                    logger.warning("Service restart already in progress")
+                    return Str(json.dumps({
+                        "success": False,
+                        "error": "Service restart already in progress, please wait"
+                    }))
+            
+            # Validate mode
+            if mode not in ['augment', 'strict', 'hybrid']:
+                logger.warning(f"Invalid RAG mode '{mode}', defaulting to 'augment'")
+                mode = 'augment'
+            
+            # Check if RAG database exists
+            rag_db_path = Path.home() / '.local' / 'share' / 'henzai' / 'rag-db'
+            has_rag_db = (rag_db_path / 'collection').exists()
+            
+            if enabled and not has_rag_db:
+                return Str(json.dumps({
+                    "success": False,
+                    "error": "No RAG database found. Please index documents first."
+                }))
+            
+            # Priority 2: Check if generation is active - defer restart if so
+            if self._current_generation_id is not None:
+                logger.warning("Generation active, deferring RAG mode change")
+                
+                # Cancel any pending timer
+                if self._rag_mode_change_timer:
+                    self._rag_mode_change_timer.cancel()
+                    self._rag_mode_change_timer = None
+                
+                # Store pending change
+                self._pending_rag_change = {
+                    'enabled': enabled,
+                    'mode': mode
+                }
+                
+                return Str(json.dumps({
+                    "success": True,
+                    "message": f"RAG mode change scheduled (will apply after current response finishes)"
+                }))
+            
+            # Priority 3: Debounce rapid changes
+            # Cancel any pending timer
+            if self._rag_mode_change_timer:
+                self._rag_mode_change_timer.cancel()
+                self._rag_mode_change_timer = None
+            
+            # If another restart is pending, debounce this change
+            if self._service_restarting:
+                logger.info("Service restart pending, debouncing RAG mode change")
+                
+                def apply_change():
+                    self._apply_rag_change(enabled, mode)
+                
+                self._rag_mode_change_timer = threading.Timer(1.0, apply_change)
+                self._rag_mode_change_timer.start()
+                
+                return Str(json.dumps({
+                    "success": True,
+                    "message": "RAG mode change scheduled"
+                }))
+            
+            # Apply the change immediately
+            return self._apply_rag_change(enabled, mode)
+                
+        except Exception as e:
+            logger.error(f"Error in SetRagEnabled: {e}", exc_info=True)
+            return Str(json.dumps({
+                "success": False,
+                "error": str(e)
+            }))
+    
+    def _apply_rag_change(self, enabled: bool, mode: str) -> Str:
+        """
+        Apply RAG mode change (internal helper).
+        
+        Args:
+            enabled: True to enable RAG, False to disable
+            mode: RAG mode
+            
+        Returns:
+            JSON response string
+        """
+        with self._service_restart_lock:
+            if self._service_restarting:
+                # Another restart started, abort
+                return Str(json.dumps({
+                    "success": False,
+                    "error": "Service restart already in progress"
+                }))
+            self._service_restarting = True
+        
+        try:
+            # Store the mode for use in _restart_ramalama_service
+            self._rag_mode = mode
+            
+            # Priority 4: Check if custom RAG image exists (if enabling)
+            if enabled and mode in ['augment', 'strict', 'hybrid']:
+                if not self._check_rag_image_exists():
+                    logger.warning("Custom RAG image not found, RAG may not work correctly")
+                    # Continue anyway - let it fail with proper error from podman
+            
+            # Restart ramalama service with new configuration
+            success = self._restart_ramalama_service(enable_rag=enabled)
+            
+            if success:
+                # Update LLM client
+                self.llm.set_rag_enabled(enabled)
+                
+                return Str(json.dumps({
+                    "success": True,
+                    "message": f"RAG {'enabled' if enabled else 'disabled'} successfully (mode: {mode})"
+                }))
+            else:
+                return Str(json.dumps({
+                    "success": False,
+                    "error": "Failed to restart ramalama service"
+                }))
+        finally:
+            with self._service_restart_lock:
+                self._service_restarting = False
+    
+    def _check_rag_image_exists(self) -> bool:
+        """
+        Check if custom RAG image exists locally.
+        
+        Returns:
+            True if image exists, False otherwise
+        """
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['podman', 'image', 'exists', 'localhost/ramalama/cuda-rag:augment'],
+                capture_output=True,
+                timeout=5
+            )
+            exists = result.returncode == 0
+            if not exists:
+                logger.warning("Custom RAG image 'localhost/ramalama/cuda-rag:augment' not found")
+            return exists
+        except Exception as e:
+            logger.error(f"Error checking RAG image: {e}")
+            return False  # Assume doesn't exist if we can't check
+    
+    def _restart_ramalama_service(self, enable_rag: bool = False) -> bool:
+        """
+        Restart ramalama.service with or without RAG.
+        
+        Args:
+            enable_rag: If True, add --rag flag to service command
+        
+        Returns:
+            True if restart succeeded, False otherwise
+        """
+        import subprocess
+        
+        logger.info(f"Restarting ramalama.service with RAG={'enabled' if enable_rag else 'disabled'}...")
+        
+        try:
+            # Check if RAG database exists
+            rag_db_path = Path.home() / '.local' / 'share' / 'henzai' / 'rag-db'
+            has_rag_db = (rag_db_path / 'collection').exists()
+            
+            if enable_rag and not has_rag_db:
+                logger.warning("RAG enabled but no database found at %s", rag_db_path)
+                return False
+            
+            # Get service file path
+            service_file = Path.home() / '.config' / 'systemd' / 'user' / 'ramalama.service'
+            
+            if not service_file.exists():
+                logger.error("Service file not found: %s", service_file)
+                return False
+            
+            # Read current service file
+            with open(service_file, 'r') as f:
+                lines = f.readlines()
+            
+            # Detect ramalama binary location
+            ramalama_bin = "/usr/bin/ramalama"  # default
+            for line in lines:
+                if line.strip().startswith('ExecStart='):
+                    # Extract binary path from existing command
+                    parts = line.strip().split()
+                    if parts and 'ramalama' in parts[0]:
+                        ramalama_bin = parts[0].replace('ExecStart=', '')
+                    break
+            
+            # Build new ExecStart command
+            # NOTE: We intentionally do NOT use --port flag with --rag due to ramalama bug
+            # (see RAMALAMA_RFE.md Issue #2). Ramalama will default to 8080/8081 anyway.
+            base_cmd = f"{ramalama_bin} serve --ctx-size 8192 --cache-reuse 512"
+            
+            # Get current model from service file
+            model = "ollama://library/deepseek-r1:14b"  # default
+            for line in lines:
+                if line.strip().startswith('ExecStart='):
+                    # Extract model from existing command
+                    parts = line.strip().split()
+                    if parts and parts[-1].startswith('ollama://'):
+                        model = parts[-1]
+                    break
+            
+            if enable_rag and has_rag_db:
+                # Use custom RAG image with chosen mode
+                # Pass RAG_MODE as environment variable to the RAG container
+                rag_mode = getattr(self, '_rag_mode', 'augment')  # Default to augment if not set
+                exec_start = f"{base_cmd} --env RAG_MODE={rag_mode} --rag-image localhost/ramalama/cuda-rag:augment --rag {rag_db_path} {model}"
+            else:
+                exec_start = f"{base_cmd} {model}"
+            
+            # Replace ExecStart and add/update Environment lines
+            new_lines = []
+            found_exec_start = False
+            found_environment = False
+            in_service_section = False
+            
+            for line in lines:
+                # Track if we're in [Service] section
+                if line.strip() == '[Service]':
+                    in_service_section = True
+                    new_lines.append(line)
+                    continue
+                elif line.strip().startswith('['):
+                    # Entering a new section - if we were in [Service] and didn't find Environment, add it
+                    if in_service_section and enable_rag and has_rag_db and not found_environment:
+                        new_lines.append('# RAG Mode: augment = use general knowledge + documents, strict = documents only\n')
+                        new_lines.append('Environment="RAG_MODE=augment"\n')
+                        new_lines.append('# Use custom RAG image with augment mode support\n')
+                        new_lines.append('Environment="RAMALAMA_RAG_IMAGE=localhost/ramalama/cuda-rag:augment"\n')
+                    in_service_section = False
+                    new_lines.append(line)
+                    continue
+                
+                # Handle ExecStart line
+                if line.strip().startswith('ExecStart='):
+                    new_lines.append(f'ExecStart={exec_start}\n')
+                    found_exec_start = True
+                    continue
+                
+                # Handle existing Environment lines
+                if in_service_section and line.strip().startswith('Environment='):
+                    # Skip existing RAG_MODE or RAMALAMA_RAG_IMAGE environment variables
+                    if 'RAG_MODE' in line or 'RAMALAMA_RAG_IMAGE' in line:
+                        found_environment = True
+                        if enable_rag and has_rag_db:
+                            # Replace with new RAG configuration
+                            if 'RAG_MODE' in line:
+                                new_lines.append('Environment="RAG_MODE=augment"\n')
+                            elif 'RAMALAMA_RAG_IMAGE' in line:
+                                new_lines.append('Environment="RAMALAMA_RAG_IMAGE=localhost/ramalama/cuda-rag:augment"\n')
+                        # else: skip these lines (remove them when RAG disabled)
+                    else:
+                        new_lines.append(line)
+                    continue
+                
+                # Keep all other lines
+                new_lines.append(line)
+            
+            # If we're at end of file and in service section, add environment if needed
+            if in_service_section and enable_rag and has_rag_db and not found_environment:
+                new_lines.append('# RAG Mode: augment = use general knowledge + documents, strict = documents only\n')
+                new_lines.append('Environment="RAG_MODE=augment"\n')
+                new_lines.append('# Use custom RAG image with augment mode support\n')
+                new_lines.append('Environment="RAMALAMA_RAG_IMAGE=localhost/ramalama/cuda-rag:augment"\n')
+            
+            # Write updated service file
+            with open(service_file, 'w') as f:
+                f.writelines(new_lines)
+            
+            logger.info("Updated service file: %s", exec_start)
+            
+            # Stop current service
+            subprocess.run(
+                ['systemctl', '--user', 'stop', 'ramalama.service'],
+                check=False,  # Don't fail if already stopped
+                capture_output=True,
+                timeout=5
+            )
+            
+            # Reload systemd daemon
+            subprocess.run(
+                ['systemctl', '--user', 'daemon-reload'],
+                check=True,
+                capture_output=True,
+                timeout=5
+            )
+            
+            # Start service with new configuration
+            subprocess.run(
+                ['systemctl', '--user', 'start', 'ramalama.service'],
+                check=True,
+                capture_output=True,
+                timeout=10
+            )
+            
+            logger.info("✓ Ramalama service restarted successfully with RAG=%s", enable_rag)
+            self._pending_service_restart = False
+            return True
+            
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout restarting ramalama.service")
+            return False
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to restart ramalama.service: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error restarting ramalama.service: {e}", exc_info=True)
+            return False
+    
+    def _check_pending_service_restart(self):
+        """Check if we have a pending service restart or RAG change after generation completes."""
+        if self._current_generation_id is None:
+            # Check for pending RAG mode change first
+            if self._pending_rag_change:
+                logger.info("Generation finished, applying pending RAG mode change")
+                change = self._pending_rag_change
+                self._pending_rag_change = None
+                
+                # Apply the deferred change
+                self._apply_rag_change(change['enabled'], change['mode'])
+                return
+            
+            # Check for pending service restart (from indexing)
+            if self._pending_service_restart:
+                logger.info("Generation finished, executing pending service restart")
+                self._restart_ramalama_service()
+                self._pending_service_restart = False
+    
+    # RAG Signals
+    
+    @dbus_signal
+    def RAGIndexingStarted(self, message: Str):
+        """Emitted when RAG indexing starts."""
+        pass
+    
+    @dbus_signal
+    def RAGIndexingProgress(self, message: Str, percent: int):
+        """Emitted during RAG indexing."""
+        pass
+    
+    @dbus_signal
+    def RAGIndexingComplete(self, message: Str, file_count: int):
+        """Emitted when RAG indexing completes."""
+        pass
+    
+    @dbus_signal
+    def RAGIndexingFailed(self, error: Str):
+        """Emitted when RAG indexing fails."""
+        pass
 

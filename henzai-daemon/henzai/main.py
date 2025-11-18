@@ -9,6 +9,7 @@ from gi.repository import GLib
 from .dbus_service import henzaiService
 from .llm import LLMClient
 from .memory import MemoryStore
+from .rag import RAGManager
 
 # Configure logging
 logging.basicConfig(
@@ -32,9 +33,17 @@ def main():
         logger.info("Initializing memory store...")
         memory = MemoryStore()
         
+        # Initialize RAG manager
+        logger.info("Initializing RAG manager...")
+        rag = RAGManager()
+        
+        # Check if RAG database exists to determine initial RAG mode
+        rag_enabled = rag.is_indexed()
+        logger.info(f"RAG database indexed: {rag_enabled}")
+        
         # Initialize LLM client (will auto-detect model from Ramalama)
         logger.info("Initializing LLM client...")
-        llm = LLMClient()
+        llm = LLMClient(rag_enabled=rag_enabled)
         
         # Try to detect current model from Ramalama systemd service file
         try:
@@ -74,7 +83,7 @@ def main():
         # Create and register D-Bus service IMMEDIATELY
         # Don't wait for Ramalama - the GetStatus method will handle readiness checks
         logger.info("Creating D-Bus service...")
-        service = henzaiService(llm, memory)
+        service = henzaiService(llm, memory, rag)
         
         logger.info("henzai daemon started successfully")
         logger.info("D-Bus service available at: org.gnome.henzai")
@@ -86,6 +95,10 @@ def main():
         
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, shutting down...")
+        if 'service' in locals():
+            service.cleanup()
+        if 'memory' in locals():
+            memory.close()
         sys.exit(0)
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)

@@ -141,6 +141,9 @@ export const ScrollableTextInput = GObject.registerClass({
         this.connect('button-press-event', this._onButtonPress.bind(this));
         this.connect('key-focus-in', this._onFocusIn.bind(this));
         
+        // Handle keyboard events (including copy/paste)
+        this.connect('key-press-event', this._onKeyPress.bind(this));
+        
         // Let Clutter.Text handle all keyboard input natively
         // Connect to its high-level signals instead
         this._clutterText.connect('activate', () => {

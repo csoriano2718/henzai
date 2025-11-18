@@ -44,7 +44,23 @@ pip3 install --user -e .
 echo "Installing systemd services..."
 mkdir -p ~/.config/systemd/user
 cp systemd/henzai-daemon.service ~/.config/systemd/user/
-cp systemd/ramalama.service ~/.config/systemd/user/
+
+# Detect ramalama location
+if [ -f "$HOME/.local/bin/ramalama" ]; then
+    RAMALAMA_BIN="$HOME/.local/bin/ramalama"
+    echo "Using user ramalama (dev version): $RAMALAMA_BIN"
+elif [ -f /usr/bin/ramalama ]; then
+    RAMALAMA_BIN="/usr/bin/ramalama"
+    echo "Warning: Using system ramalama (RPM). Consider using dev version instead."
+else
+    echo "Error: ramalama not found"
+    echo "Please install ramalama dev version:"
+    echo "  cd ~/ramalama-dev && sudo python3 -m pip install --upgrade ."
+    exit 1
+fi
+
+# Update ramalama.service with correct path
+sed "s|/usr/bin/ramalama|$RAMALAMA_BIN|g" systemd/ramalama.service > ~/.config/systemd/user/ramalama.service
 
 # Install D-Bus service activation file
 echo "Installing D-Bus service activation file..."
@@ -113,6 +129,18 @@ echo "1. Log out and log back in (or restart GNOME Shell)"
 echo "2. Press Super+A to open henzai chat"
 echo "3. Configure settings in Extensions app"
 echo
+echo "Optional: RAG Document Indexing"
+echo "--------------------------------"
+echo "henzai can index your documents for AI-augmented responses."
+echo "First-time indexing requires downloading tools (~4.4 GB, one-time)."
+echo ""
+echo "To pre-download (recommended if you plan to use RAG):"
+echo "  podman pull quay.io/ramalama/cuda:latest"
+echo ""
+echo "Or wait and it will download automatically on first use."
+echo
+echo "Service Status:"
+echo "---------------"
 echo "To check service status:"
 echo "  systemctl --user status ramalama"
 echo "  systemctl --user status henzai-daemon"

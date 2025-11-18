@@ -38,6 +38,54 @@
       <description>Keyboard shortcut to open/close the chat panel</description>
     </key>
     
+    <!-- RAG Configuration -->
+    <key name="rag-enabled" type="b">
+      <default>false</default>
+      <summary>Enable RAG</summary>
+      <description>Enable Retrieval-Augmented Generation with local documents</description>
+    </key>
+    
+    <key name="rag-folder-path" type="s">
+      <default>''</default>
+      <summary>RAG Document Folder</summary>
+      <description>Path to folder containing documents for RAG indexing</description>
+    </key>
+    
+    <key name="rag-format" type="s">
+      <default>'qdrant'</default>
+      <summary>RAG Format</summary>
+      <description>Vector database format (qdrant, json, markdown, milvus)</description>
+    </key>
+    
+    <key name="rag-enable-ocr" type="b">
+      <default>false</default>
+      <summary>Enable OCR</summary>
+      <description>Enable OCR for embedded images in PDFs (increases RAM usage)</description>
+    </key>
+    
+    <key name="rag-last-indexed" type="s">
+      <default>''</default>
+      <summary>Last Indexed Timestamp</summary>
+      <description>ISO timestamp of last successful indexing</description>
+    </key>
+    
+    <key name="rag-file-count" type="i">
+      <default>0</default>
+      <summary>Indexed File Count</summary>
+      <description>Number of files in the current RAG index</description>
+    </key>
+    
+    <key name="rag-mode" type="s">
+      <choices>
+        <choice value="augment"/>
+        <choice value="strict"/>
+        <choice value="hybrid"/>
+      </choices>
+      <default>'augment'</default>
+      <summary>RAG Mode</summary>
+      <description>How RAG should use documents: augment (docs + knowledge), strict (docs only), hybrid (docs preferred)</description>
+    </key>
+    
   </schema>
 </schemalist>
 
