@@ -141,6 +141,10 @@ export const ScrollableTextInput = GObject.registerClass({
         this.connect('button-press-event', this._onButtonPress.bind(this));
         this.connect('key-focus-in', this._onFocusIn.bind(this));
         
+        // CRITICAL: Connect key-press-event to the Clutter.Text directly!
+        // When we set key focus to Clutter.Text, events bypass the parent St.Widget
+        this._clutterText.connect('key-press-event', this._onKeyPress.bind(this));
+        
         // Let Clutter.Text handle all keyboard input natively
         // Connect to its high-level signals instead
         this._clutterText.connect('activate', () => {
@@ -236,11 +240,9 @@ export const ScrollableTextInput = GObject.registerClass({
                     
                 case Clutter.KEY_c:
                 case Clutter.KEY_C:
-                    // Copy
-                    if (cursorPos !== selectionBound) {
-                        const start = Math.min(cursorPos, selectionBound);
-                        const end = Math.max(cursorPos, selectionBound);
-                        const selectedText = text.substring(start, end);
+                    // Copy - use get_selection() API instead of manual calculation
+                    const selectedText = this._clutterText.get_selection();
+                    if (selectedText && selectedText.length > 0) {
                         St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, selectedText);
                     }
                     return Clutter.EVENT_STOP;
@@ -257,12 +259,10 @@ export const ScrollableTextInput = GObject.registerClass({
                     
                 case Clutter.KEY_x:
                 case Clutter.KEY_X:
-                    // Cut
-                    if (cursorPos !== selectionBound) {
-                        const start = Math.min(cursorPos, selectionBound);
-                        const end = Math.max(cursorPos, selectionBound);
-                        const selectedText = text.substring(start, end);
-                        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, selectedText);
+                    // Cut - use get_selection() API instead of manual calculation
+                    const cutText = this._clutterText.get_selection();
+                    if (cutText && cutText.length > 0) {
+                        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, cutText);
                         this._deleteSelection();
                     }
                     return Clutter.EVENT_STOP;
