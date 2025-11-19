@@ -141,8 +141,9 @@ export const ScrollableTextInput = GObject.registerClass({
         this.connect('button-press-event', this._onButtonPress.bind(this));
         this.connect('key-focus-in', this._onFocusIn.bind(this));
         
-        // Handle keyboard events (including copy/paste)
-        this.connect('key-press-event', this._onKeyPress.bind(this));
+        // CRITICAL: Connect key-press-event to the Clutter.Text directly!
+        // When we set key focus to Clutter.Text, events bypass the parent St.Widget
+        this._clutterText.connect('key-press-event', this._onKeyPress.bind(this));
         
         // Let Clutter.Text handle all keyboard input natively
         // Connect to its high-level signals instead
@@ -223,35 +224,44 @@ export const ScrollableTextInput = GObject.registerClass({
         const ctrlPressed = (state & Clutter.ModifierType.CONTROL_MASK) !== 0;
         const shiftPressed = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
         
+        // Debug: Log Ctrl key presses
+        if (ctrlPressed) {
+            console.log(`henzai: Ctrl+${String.fromCharCode(keyval)} pressed (keyval: ${keyval})`);
+        }
+        
         // Handle Ctrl shortcuts
         if (ctrlPressed) {
             const text = this._clutterText.get_text();
-            const cursorPos = this._clutterText.get_cursor_position();
-            const selectionBound = this._clutterText.get_selection_bound();
             
             switch (keyval) {
                 case Clutter.KEY_a:
                 case Clutter.KEY_A:
                     // Select all
+                    console.log('henzai: Select All');
                     this._clutterText.set_cursor_position(0);
                     this._clutterText.set_selection_bound(text.length);
                     return Clutter.EVENT_STOP;
                     
                 case Clutter.KEY_c:
                 case Clutter.KEY_C:
-                    // Copy
-                    if (cursorPos !== selectionBound) {
-                        const start = Math.min(cursorPos, selectionBound);
-                        const end = Math.max(cursorPos, selectionBound);
-                        const selectedText = text.substring(start, end);
+                    // Copy - use get_selection() instead of manual calculation
+                    console.log('henzai: Copy');
+                    const selectedText = this._clutterText.get_selection();
+                    console.log(`henzai: get_selection() returned: "${selectedText}"`);
+                    if (selectedText && selectedText.length > 0) {
+                        console.log(`henzai: Copying: "${selectedText}"`);
                         St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, selectedText);
+                    } else {
+                        console.log(`henzai: No selection to copy`);
                     }
                     return Clutter.EVENT_STOP;
                     
                 case Clutter.KEY_v:
                 case Clutter.KEY_V:
                     // Paste
+                    console.log('henzai: Paste');
                     St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (clipboard, text) => {
+                        console.log(`henzai: Pasting: "${text}"`);
                         if (text) {
                             this._insertText(text);
                         }
@@ -260,13 +270,15 @@ export const ScrollableTextInput = GObject.registerClass({
                     
                 case Clutter.KEY_x:
                 case Clutter.KEY_X:
-                    // Cut
-                    if (cursorPos !== selectionBound) {
-                        const start = Math.min(cursorPos, selectionBound);
-                        const end = Math.max(cursorPos, selectionBound);
-                        const selectedText = text.substring(start, end);
-                        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, selectedText);
+                    // Cut - use get_selection() instead of manual calculation
+                    console.log('henzai: Cut');
+                    const cutText = this._clutterText.get_selection();
+                    if (cutText && cutText.length > 0) {
+                        console.log(`henzai: Cutting: "${cutText}"`);
+                        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, cutText);
                         this._deleteSelection();
+                    } else {
+                        console.log('henzai: No selection to cut');
                     }
                     return Clutter.EVENT_STOP;
             }
