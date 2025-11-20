@@ -38,7 +38,7 @@ def create_test_documents():
     TEST_DOCS_DIR = tempfile.mkdtemp(prefix="henzai-rag-test-")
     
     # Document 1: About henzai project
-    doc1 = TEST_DOCS_DIR + "/henzai-info.txt"
+    doc1 = TEST_DOCS_DIR + "/henzai-info.md"
     with open(doc1, "w") as f:
         f.write("""
 henzai Project Information
@@ -73,7 +73,7 @@ The project was started in November 2024.
         """.strip())
     
     # Document 3: Unrelated content (to test relevance)
-    doc3 = TEST_DOCS_DIR + "/recipes.txt"
+    doc3 = TEST_DOCS_DIR + "/recipes.md"
     with open(doc3, "w") as f:
         f.write("""
 Chocolate Chip Cookie Recipe
@@ -156,25 +156,34 @@ def check_service_running():
 
 def get_rag_status():
     """Get current RAG status"""
+    import json
+    
     # GetRAGStatus takes source_path and rag_enabled as args
     success, stdout, stderr = call_dbus_method("GetRAGStatus", "", True)
     if success:
-        # Parse output: s "status_string"
-        parts = stdout.split('"')
-        if len(parts) >= 2:
-            status_str = parts[1]
-            # Parse status string (e.g., "RAG enabled in augment mode")
-            if "enabled" in status_str.lower():
-                # Extract mode
-                if "augment" in status_str.lower():
-                    return "enabled", "augment"
-                elif "strict" in status_str.lower():
-                    return "enabled", "strict"
-                elif "hybrid" in status_str.lower():
-                    return "enabled", "hybrid"
-                return "enabled", "unknown"
-            else:
-                return "disabled", None
+        # Parse output: s "{\"json_string\"}"
+        # Extract the string between first and last quote
+        if '"' in stdout:
+            # Find all occurrences of "
+            first_quote = stdout.find('"')
+            last_quote = stdout.rfind('"')
+            if first_quote != -1 and last_quote > first_quote:
+                json_str = stdout[first_quote+1:last_quote]
+                # Unescape the JSON
+                json_str = json_str.replace('\\', '')
+                try:
+                    status_obj = json.loads(json_str)
+                    enabled = status_obj.get('enabled', False)
+                    if enabled:
+                        # Extract mode from settings (if available) or default to "augment"
+                        mode = status_obj.get('mode', 'augment')
+                        return "enabled", mode
+                    else:
+                        return "disabled", None
+                except json.JSONDecodeError as e:
+                    log(f"Failed to parse RAG status JSON: {e}", "WARN")
+                    log(f"JSON string was: {json_str}", "WARN")
+                    return None, None
     return None, None
 
 
