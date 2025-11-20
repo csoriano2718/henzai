@@ -142,7 +142,7 @@ export const ScrollableTextInput = GObject.registerClass({
         this.connect('key-focus-in', this._onFocusIn.bind(this));
         
         // CRITICAL: Connect key-press-event to the Clutter.Text directly!
-        // When we set key focus to Clutter.Text, events bypass the parent St.Widget
+        // But connect it in capture phase so we see events before Clutter.Text processes them
         this._clutterText.connect('key-press-event', this._onKeyPress.bind(this));
         
         // Let Clutter.Text handle all keyboard input natively
@@ -249,10 +249,30 @@ export const ScrollableTextInput = GObject.registerClass({
                     
                 case Clutter.KEY_v:
                 case Clutter.KEY_V:
-                    // Paste
+                    // Paste - handle selection deletion inside async callback
+                    const selectedTextToPaste = this._clutterText.get_selection();
+                    const pasteHasSelection = selectedTextToPaste && selectedTextToPaste.length > 0;
+                    
+                    // Get clipboard text and perform the paste operation
                     St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (clipboard, text) => {
-                        if (text) {
-                            this._insertText(text);
+                        if (!text || text.length === 0) return;
+                        
+                        try {
+                            // If there was a selection, delete it first using Clutter's native API
+                            // This must be done INSIDE the async callback to avoid race conditions
+                            if (pasteHasSelection) {
+                                this._clutterText.delete_selection();
+                            }
+                            
+                            // Insert at current cursor position (after any deletion)
+                            const insertPos = this._clutterText.get_cursor_position();
+                            this._clutterText.insert_text(text, insertPos);
+                            
+                            // Ensure selection bound matches cursor (no selection after paste)
+                            const newPos = this._clutterText.get_cursor_position();
+                            this._clutterText.set_selection_bound(newPos);
+                        } catch (e) {
+                            logError(e, 'Error in paste handler');
                         }
                     });
                     return Clutter.EVENT_STOP;
@@ -292,28 +312,29 @@ export const ScrollableTextInput = GObject.registerClass({
     }
 
     _insertText(newText) {
-        const text = this._clutterText.get_text();
         let cursorPos = this._clutterText.get_cursor_position();
         let selectionBound = this._clutterText.get_selection_bound();
         
         if (cursorPos !== selectionBound) {
-            // Delete selection first
-            this._deleteSelection();
-            cursorPos = this._clutterText.get_cursor_position();
+            // Delete selection first using Clutter.Text API
+            const start = Math.min(cursorPos, selectionBound);
+            const end = Math.max(cursorPos, selectionBound);
+            this._clutterText.delete_text(start, end);
+            // After deletion, cursor is at start position
+            cursorPos = start;
         }
         
-        const before = text.substring(0, cursorPos);
-        const after = text.substring(cursorPos);
-        const newFullText = before + newText + after;
+        // Use Clutter.Text's insert_text method directly
+        // This properly handles cursor positioning
+        this._clutterText.insert_text(newText, cursorPos);
         
-        this._clutterText.set_text(newFullText);
-        const newCursorPos = cursorPos + newText.length;
-        this._clutterText.set_cursor_position(newCursorPos);
+        // insert_text automatically moves cursor to end of inserted text
+        // Just ensure selection bound matches cursor (no selection)
+        const newCursorPos = this._clutterText.get_cursor_position();
         this._clutterText.set_selection_bound(newCursorPos);
     }
 
     _deleteSelection() {
-        const text = this._clutterText.get_text();
         const cursorPos = this._clutterText.get_cursor_position();
         const selectionBound = this._clutterText.get_selection_bound();
         
@@ -322,16 +343,14 @@ export const ScrollableTextInput = GObject.registerClass({
         const start = Math.min(cursorPos, selectionBound);
         const end = Math.max(cursorPos, selectionBound);
         
-        const before = text.substring(0, start);
-        const after = text.substring(end);
-        
-        this._clutterText.set_text(before + after);
-        this._clutterText.set_cursor_position(start);
+        // Use Clutter.Text's delete_text API
+        this._clutterText.delete_text(start, end);
+        // Cursor will be at start position
+        // Ensure selection bound matches (no selection)
         this._clutterText.set_selection_bound(start);
     }
 
     _handleBackspace() {
-        const text = this._clutterText.get_text();
         const cursorPos = this._clutterText.get_cursor_position();
         const selectionBound = this._clutterText.get_selection_bound();
         
@@ -341,18 +360,18 @@ export const ScrollableTextInput = GObject.registerClass({
         }
         
         if (cursorPos > 0) {
-            const before = text.substring(0, cursorPos - 1);
-            const after = text.substring(cursorPos);
-            this._clutterText.set_text(before + after);
-            this._clutterText.set_cursor_position(cursorPos - 1);
+            // Use Clutter.Text's delete_text API
+            this._clutterText.delete_text(cursorPos - 1, cursorPos);
+            // Cursor will be at cursorPos - 1
+            // Ensure selection bound matches
             this._clutterText.set_selection_bound(cursorPos - 1);
         }
     }
 
     _handleDelete() {
-        const text = this._clutterText.get_text();
         const cursorPos = this._clutterText.get_cursor_position();
         const selectionBound = this._clutterText.get_selection_bound();
+        const text = this._clutterText.get_text();
         
         if (cursorPos !== selectionBound) {
             this._deleteSelection();
@@ -360,10 +379,10 @@ export const ScrollableTextInput = GObject.registerClass({
         }
         
         if (cursorPos < text.length) {
-            const before = text.substring(0, cursorPos);
-            const after = text.substring(cursorPos + 1);
-            this._clutterText.set_text(before + after);
-            this._clutterText.set_cursor_position(cursorPos);
+            // Use Clutter.Text's delete_text API
+            this._clutterText.delete_text(cursorPos, cursorPos + 1);
+            // Cursor stays at cursorPos
+            // Ensure selection bound matches
             this._clutterText.set_selection_bound(cursorPos);
         }
     }
