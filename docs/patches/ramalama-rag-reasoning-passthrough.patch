@@ -1,4 +1,4 @@
-From 51cdeaf50dd92cccb32537d324556903e9b2a0c6 Mon Sep 17 00:00:00 2001
+From bd679ed18304a102e29e0d46bd4d826bdab2018a Mon Sep 17 00:00:00 2001
 From: Carlos Soriano <csoriano2718@users.noreply.github.com>
 Date: Fri, 21 Nov 2025 23:12:18 +0100
 Subject: [PATCH] fix(rag): Pass through reasoning_content in streaming
@@ -6,20 +6,23 @@ Subject: [PATCH] fix(rag): Pass through reasoning_content in streaming
 
 Add support for reasoning_content field in RAG proxy streaming:
 - Add reasoning_content to Delta model
-- Extract and forward reasoning_content from upstream LLM
+- Use getattr() to safely extract reasoning_content from upstream LLM
 - Preserve reasoning content in streaming chunks
 
 This allows reasoning models (deepseek-r1, qwq, etc.) to work correctly
 with RAG enabled. Previously, reasoning_content was stripped by the RAG
 proxy, causing the UI to not display the model's thought process.
 
+The getattr() is necessary because OpenAI client's ChoiceDelta may not
+have reasoning_content attribute depending on the model/version.
+
 Tested with deepseek-r1:14b + RAG in strict/augment modes.
 ---
- container-images/scripts/rag_framework | 9 ++++++---
- 1 file changed, 6 insertions(+), 3 deletions(-)
+ container-images/scripts/rag_framework | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
 
 diff --git a/container-images/scripts/rag_framework b/container-images/scripts/rag_framework
-index aabf2fb1..86f80ab2 100755
+index aabf2fb1..d1a142d6 100755
 --- a/container-images/scripts/rag_framework
 +++ b/container-images/scripts/rag_framework
 @@ -82,6 +82,7 @@ class ChatCompletionResponse(BaseModel):
@@ -30,7 +33,7 @@ index aabf2fb1..86f80ab2 100755
  
  
  class StreamChoice(BaseModel):
-@@ -349,14 +350,16 @@ class OpenAICompatibleRagService:
+@@ -349,14 +350,17 @@ class OpenAICompatibleRagService:
              )
  
              async for chunk in response:
@@ -39,7 +42,8 @@ index aabf2fb1..86f80ab2 100755
 +                if chunk.choices and chunk.choices[0].delta:
 +                    delta = chunk.choices[0].delta
 +                    content = delta.content
-+                    reasoning_content = delta.reasoning_content
++                    # Use getattr to safely get reasoning_content (may not exist in all models/versions)
++                    reasoning_content = getattr(delta, 'reasoning_content', None)
  
                      stream_chunk = ChatCompletionStreamResponse(
                          id=completion_id,
