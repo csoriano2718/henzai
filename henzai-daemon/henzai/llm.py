@@ -507,8 +507,8 @@ Please provide a natural language response to the user about what was done."""
             reasoning_content = message.get('reasoning_content', '')
             if reasoning_content:
                 logger.info(f"Extracted reasoning content ({len(reasoning_content)} chars)")
-                # For non-streaming, we can't emit signals, so prepend as <think> tags
-                # This allows the response to be parsed by existing logic
+                # For non-streaming responses (not used by UI, but available for CLI/testing)
+                # Format with <think> tags that can be parsed if needed
                 content = f"<think>\n{reasoning_content}\n</think>\n\n{content}"
             
             logger.debug(f"Received response ({len(content)} chars)")
