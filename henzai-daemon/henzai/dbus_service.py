@@ -1420,8 +1420,6 @@ class henzaiService:
             # Build new ExecStart command
             # NOTE: We intentionally do NOT use --port flag with --rag due to ramalama bug
             # (see RAMALAMA_RFE.md Issue #2). Ramalama will default to 8080/8081 anyway.
-            # Always enable --thinking for reasoning models (deepseek-r1, qwq, etc.)
-            base_cmd = f"{ramalama_bin} serve --ctx-size 8192 --cache-reuse 512 --thinking true"
             
             # Get current model from service file
             model = "ollama://library/deepseek-r1:14b"  # default
@@ -1432,6 +1430,19 @@ class henzaiService:
                     if parts and parts[-1].startswith('ollama://'):
                         model = parts[-1]
                     break
+            
+            # Check if model supports reasoning
+            # Extract model name from full spec (e.g., "ollama://library/deepseek-r1:14b" -> "deepseek-r1")
+            model_name = model.split('/')[-1].split(':')[0] if '/' in model else model.split(':')[0]
+            supports_reasoning = any(reasoning_model in model_name.lower() for reasoning_model in self.llm.REASONING_MODELS)
+            
+            # Build base command with --thinking only if model supports it
+            base_cmd = f"{ramalama_bin} serve --ctx-size 8192 --cache-reuse 512"
+            if supports_reasoning:
+                base_cmd += " --thinking true"
+                logger.info(f"Model {model_name} supports reasoning - enabling --thinking flag")
+            else:
+                logger.info(f"Model {model_name} doesn't support reasoning - --thinking flag omitted")
             
             if enable_rag and has_rag_db:
                 # Use custom RAG image with chosen mode
