@@ -10,22 +10,28 @@ This directory contains patches for upstream Ramalama that were developed as par
 **Target:** Ramalama main branch
 
 **Summary:**
-Enable reasoning by default in llama.cpp inference spec with auto-detection.
+Add `--reasoning-format` flag support for proper reasoning when `--thinking` is enabled.
 
 **Changes:**
-- Add `--reasoning-format auto` to detect model's reasoning format automatically
-- Change `--reasoning-budget` from `0` to `-1` (unlimited) by default
-- Remove conditional `--reasoning-budget` flag that was disabling reasoning
+- Add `--reasoning-format auto` when `args.thinking` is true
+- Add `--reasoning-budget -1` when `args.thinking` is true
+- Keep `--reasoning-budget 0` when `args.thinking` is false (existing behavior)
 
 **Impact:**
-- Reasoning models (deepseek-r1, qwq, etc.) work correctly by default
-- No need for explicit `--thinking` flag configuration
-- Backward compatible (non-reasoning models ignore these flags)
+- Reasoning models work correctly when `--thinking` flag is used
+- **No change to default behavior** - reasoning remains disabled unless `--thinking` is passed
+- Preserves Ramalama's ability to disable reasoning
+- Backward compatible
+
+**Rationale:**
+Previously, even when `--thinking` was enabled, the `--reasoning-budget` was always 0 (disabled).
+This patch adds the missing `--reasoning-format auto` flag and sets `--reasoning-budget -1`
+when `--thinking` is requested, allowing reasoning models to actually generate reasoning content.
 
 **Testing:**
-- Tested with deepseek-r1:14b (reasoning model)
-- Tested with llama3.2:3b (non-reasoning model)
-- Both models work correctly with auto-detection
+- Tested with deepseek-r1:14b + `--thinking` (reasoning works)
+- Tested with llama3.2:3b without `--thinking` (no reasoning, as expected)
+- Both models work correctly
 
 ---
 
