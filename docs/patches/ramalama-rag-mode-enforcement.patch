@@ -1,27 +1,38 @@
-From 10f607b75fc31b8bfabfad8d8b7439cf45a9ff45 Mon Sep 17 00:00:00 2001
+From f0aa052140e5c2077a8d5e3351bbdd52c2dbf810 Mon Sep 17 00:00:00 2001
 From: Carlos Soriano <csoriano2718@users.noreply.github.com>
 Date: Fri, 21 Nov 2025 23:13:01 +0100
-Subject: [PATCH] feat(rag): Implement RAG_MODE environment variable for
- behavior control
+Subject: [PATCH] feat(rag): Add RAG_MODE environment variable for behavior
+ control
 
 Add support for three RAG modes via RAG_MODE environment variable:
 
-- **strict**: Documents only, refuses out-of-context queries with "I don't know"
-- **hybrid**: Prefers documents, falls back to general knowledge with indication
-- **augment** (default): Freely uses both documents and general knowledge
+Modes:
+- strict: Documents only - refuses out-of-context queries with "I don't know"
+- hybrid: Prefers documents, falls back to general knowledge
+- augment (default): Uses both documents and general knowledge freely
 
-The RAG proxy now reads RAG_MODE from environment and adjusts the system
-prompt accordingly. This allows applications to control RAG behavior
-without modifying the rag_framework script.
+Implementation:
+- Read RAG_MODE from environment in _build_rag_enhanced_messages()
+- Generate different system prompts based on mode
+- Strict mode uses strong enforcement language
+- Hybrid mode indicates when using general knowledge
+- Augment mode freely supplements with knowledge
 
-Example usage:
+Usage:
   ramalama serve --env RAG_MODE=strict --rag /path/to/db model
   ramalama serve --env RAG_MODE=hybrid --rag /path/to/db model
   ramalama serve --env RAG_MODE=augment --rag /path/to/db model
 
-Previously, the prompt was hardcoded to a weak "please don't fabricate"
-instruction that models often ignored. The new strict mode uses strong
-language to enforce document-only responses.
+Tested:
+- Strict mode: Correctly refuses "What is the capital of Germany?"
+- Augment mode: Answers general knowledge questions
+- Hybrid mode: Prefers documents, allows fallback
+
+Previously, the RAG prompt was weak ("please don't fabricate") and
+models often ignored it. The new strict mode uses explicit enforcement
+to ensure document-only responses.
+
+Assisted-by: Cursor with Claude Sonnet 4.5
 ---
  container-images/scripts/rag_framework | 72 +++++++++++++++++++++-----
  1 file changed, 60 insertions(+), 12 deletions(-)

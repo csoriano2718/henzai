@@ -1,22 +1,31 @@
-From bd679ed18304a102e29e0d46bd4d826bdab2018a Mon Sep 17 00:00:00 2001
+From 4ddad9c0b5bcaaf89ca6b3c457587a233a5ff972 Mon Sep 17 00:00:00 2001
 From: Carlos Soriano <csoriano2718@users.noreply.github.com>
 Date: Fri, 21 Nov 2025 23:12:18 +0100
 Subject: [PATCH] fix(rag): Pass through reasoning_content in streaming
  responses
 
-Add support for reasoning_content field in RAG proxy streaming:
-- Add reasoning_content to Delta model
-- Use getattr() to safely extract reasoning_content from upstream LLM
-- Preserve reasoning content in streaming chunks
+Add reasoning_content field to RAG proxy streaming to support reasoning
+models (deepseek-r1, qwq, etc.):
 
-This allows reasoning models (deepseek-r1, qwq, etc.) to work correctly
-with RAG enabled. Previously, reasoning_content was stripped by the RAG
-proxy, causing the UI to not display the model's thought process.
+Changes:
+- Add reasoning_content to Delta pydantic model
+- Extract reasoning_content from upstream LLM using getattr()
+- Include reasoning_content in streamed chunks
 
-The getattr() is necessary because OpenAI client's ChoiceDelta may not
-have reasoning_content attribute depending on the model/version.
+The getattr() is necessary because OpenAI client's ChoiceDelta
+conditionally includes reasoning_content (present in reasoning chunks,
+absent in metadata/initial chunks). Direct attribute access would cause
+AttributeError on non-reasoning chunks.
 
-Tested with deepseek-r1:14b + RAG in strict/augment modes.
+Tested:
+- deepseek-r1:14b with RAG: reasoning_content streams correctly
+- llama3.2 with RAG: no AttributeError (returns None)
+- All RAG modes (strict/hybrid/augment): reasoning preserved
+
+Without this fix, reasoning models appear to work but don't return
+reasoning content when RAG is enabled.
+
+Assisted-by: Cursor with Claude Sonnet 4.5
 ---
  container-images/scripts/rag_framework | 10 +++++++---
  1 file changed, 7 insertions(+), 3 deletions(-)

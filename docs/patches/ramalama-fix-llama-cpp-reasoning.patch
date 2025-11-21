@@ -1,22 +1,26 @@
-From 06de605f8d3cf2057bea4a14fad8cad42ccf4f02 Mon Sep 17 00:00:00 2001
+From f9478f8c29fa3545d627d2726bed6115d229dc5d Mon Sep 17 00:00:00 2001
 From: Carlos Soriano <csoriano2718@users.noreply.github.com>
 Date: Fri, 21 Nov 2025 23:11:24 +0100
-Subject: [PATCH] fix(llama.cpp): Add reasoning-format flag for proper
- reasoning support
+Subject: [PATCH] fix(llama.cpp): Add reasoning flags when --thinking is
+ enabled
 
-- Add --reasoning-format auto when args.thinking is enabled
-- Add --reasoning-budget -1 when args.thinking is enabled
-- Keep --reasoning-budget 0 when args.thinking is disabled (existing behavior)
+Add --reasoning-format and --reasoning-budget flags to llama.cpp
+inference spec when args.thinking is true:
+- --reasoning-format auto: Auto-detect model's reasoning format
+- --reasoning-budget -1: Unlimited reasoning budget
 
-This allows reasoning models to work correctly when --thinking flag is
-passed, while preserving the ability to disable reasoning (default).
+Keep existing behavior when args.thinking is false:
+- --reasoning-budget 0: Disable reasoning (default)
 
-Previously, --reasoning-budget was always 0 (disabled) even when
---thinking was requested. Now the flag properly enables reasoning with
-auto-detection when explicitly requested via --thinking.
+This allows reasoning models (deepseek-r1, qwq, etc.) to generate
+reasoning content when --thinking flag is used. Previously, even
+when --thinking was enabled, reasoning-budget was always 0.
 
-No change to default behavior: reasoning remains disabled unless
---thinking flag is used.
+Tested with:
+- deepseek-r1:14b + --thinking true: reasoning works
+- llama3.2 + --thinking false: reasoning disabled
+
+Assisted-by: Cursor with Claude Sonnet 4.5
 ---
  inference-spec/engines/llama.cpp.yaml | 10 +++++++++-
  1 file changed, 9 insertions(+), 1 deletion(-)
