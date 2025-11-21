@@ -210,6 +210,148 @@ git log --oneline -10
 
 ## 🎓 LESSONS LEARNED
 
+### 2025-11-19: Copy/Paste Cursor Positioning Race Condition
+
+**What happened:**
+- User reported copy/paste (Ctrl+C, Ctrl+V) was working, but cursor positioning was inconsistent
+- Sometimes cursor would jump to start of pasted text instead of end
+- Behavior was flaky - worked half the time
+- I initially said "I'll test it myself" but then asked user to test again
+
+**Root cause:**
+- Used manual string manipulation with `set_text()`:
+  ```javascript
+  const before = text.substring(0, cursorPos);
+  const after = text.substring(cursorPos);
+  this._clutterText.set_text(before + newText + after);
+  this._clutterText.set_cursor_position(newCursorPos);  // Race condition!
+  ```
+- `set_text()` replaces the **entire text buffer** and can reset internal cursor state
+- Created race condition between `set_text()` and `set_cursor_position()`
+- Same issue existed in `_deleteSelection()`, `_handleBackspace()`, `_handleDelete()`
+
+**The fix:**
+- Replaced ALL manual string manipulation with native Clutter.Text API:
+  ```javascript
+  // Insert
+  this._clutterText.insert_text(newText, cursorPos);
+  
+  // Delete
+  this._clutterText.delete_text(start, end);
+  ```
+- These are **atomic operations** - they modify text AND cursor position together
+- No race conditions possible
+- Cursor positioning is deterministic
+
+**What should have happened:**
+1. User reports flaky cursor positioning
+2. Recognize this is a classic race condition symptom
+3. Check if we're using atomic APIs or manual manipulation
+4. Replace `set_text()` with `insert_text()` and `delete_text()`
+5. Test by having user try multiple times to verify consistency
+6. **Be honest about testing limitations** - can't automate UI interactions in GNOME Shell
+
+**Cost:**
+- Multiple iterations with "half working" behavior
+- User had to point out I wasn't actually testing myself
+- Could have been solved immediately with proper API usage
+
+**Prevention:**
+- **NEVER use `set_text()` for text editing** - only use for full replacement
+- **ALWAYS use native Clutter.Text editing APIs:**
+  - `insert_text(text, position)` - for inserting
+  - `delete_text(start, end)` - for deleting
+  - `set_text(text)` - only for full replacement (initialization)
+- **Be honest about testing limitations** - if you can't truly test something, say so
+- **Race conditions manifest as "works sometimes"** - always suspicious
+- When user says "it works half the time", immediately think atomic operations
+
+**Key lesson:**
+> When doing text editing in Clutter.Text, NEVER manually manipulate strings with substring() + set_text(). Always use the atomic insert_text() and delete_text() APIs. Race conditions manifest as flaky, inconsistent behavior.
+
+---
+
+### 2025-11-20: Async Clipboard and Selection Deletion Race Condition
+
+**What happened:**
+- User reported Ctrl+V paste was working, but didn't replace selected text
+- Selected text + paste would result in: `selected_text + pasted_text` instead of just `pasted_text`
+- The behavior was 100% reproducible (not flaky like the cursor positioning issue)
+
+**Root cause:**
+- `St.Clipboard.get_default().get_text()` is **asynchronous** (takes a callback)
+- Original code called `_deleteSelection()` BEFORE the async clipboard call
+- By the time the clipboard callback executed, the selection state had changed
+- `get_cursor_position()` in the callback returned wrong position (0 or -1)
+- Text was inserted at wrong position → duplication instead of replacement
+
+**The wrong approach:**
+```javascript
+// WRONG: Delete selection before async call
+const selectedText = this._clutterText.get_selection();
+if (selectedText && selectedText.length > 0) {
+    this._deleteSelection();  // ← Selection state changes!
+}
+
+St.Clipboard.get_default().get_text(..., (clipboard, text) => {
+    const insertPos = this._clutterText.get_cursor_position();  // ← Wrong position!
+    this._clutterText.insert_text(text, insertPos);
+});
+```
+
+**The correct fix:**
+```javascript
+// CORRECT: Save selection state, delete INSIDE callback
+const selectedText = this._clutterText.get_selection();
+const hasSelection = selectedText && selectedText.length > 0;
+
+St.Clipboard.get_default().get_text(..., (clipboard, text) => {
+    // Delete selection INSIDE callback using native API
+    if (hasSelection) {
+        this._clutterText.delete_selection();  // ← Handles internal state correctly
+    }
+    
+    // Now cursor is at correct position after deletion
+    const insertPos = this._clutterText.get_cursor_position();
+    this._clutterText.insert_text(text, insertPos);
+});
+```
+
+**Why this works:**
+- `get_selection()` returns the actual text content (not position-based)
+- We save whether there WAS a selection before the async call
+- `delete_selection()` is called INSIDE the callback, so selection state is current
+- `get_cursor_position()` after deletion returns the correct insert position
+- No race condition because all state changes happen sequentially in the callback
+
+**What should have happened:**
+1. User reports "paste doesn't replace selection"
+2. Recognize `St.Clipboard.get_text()` is async (takes callback parameter)
+3. Realize: any state changes before the callback will be stale inside the callback
+4. Move the selection deletion INSIDE the callback
+5. Use native `delete_selection()` API instead of manual position calculation
+6. **Total time: ~15 minutes instead of multiple iterations**
+
+**Cost:**
+- Multiple iterations trying to "save positions" before the async call
+- Confusion about `selection_bound` returning -1
+- Tried manual position calculation when native API existed
+
+**Prevention:**
+- **ALWAYS check if an API is async** (does it take a callback?)
+- **NEVER modify state before an async call and expect it to be valid in the callback**
+- **For async operations: save immutable data (like text content), not mutable state (like positions)**
+- **Use native Clutter.Text APIs:**
+  - `get_selection()` - returns selected text content
+  - `delete_selection()` - deletes current selection atomically
+  - `insert_text(text, pos)` - inserts text atomically
+- **When debugging "doesn't work" (not "works sometimes"), look for async operations**
+
+**Key lesson:**
+> When working with async APIs like St.Clipboard, perform ALL state-dependent operations (like selection deletion) INSIDE the callback, not before it. Save only immutable data (text content) outside the callback, and use native APIs (delete_selection(), insert_text()) for atomic operations.
+
+---
+
 ### 2025-11-11: Clutter.Text Invisible Text & Clutter.Color API
 
 **What happened:**
