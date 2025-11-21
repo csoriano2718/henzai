@@ -1,0 +1,145 @@
+From 10f607b75fc31b8bfabfad8d8b7439cf45a9ff45 Mon Sep 17 00:00:00 2001
+From: Carlos Soriano <csoriano2718@users.noreply.github.com>
+Date: Fri, 21 Nov 2025 23:13:01 +0100
+Subject: [PATCH] feat(rag): Implement RAG_MODE environment variable for
+ behavior control
+
+Add support for three RAG modes via RAG_MODE environment variable:
+
+- **strict**: Documents only, refuses out-of-context queries with "I don't know"
+- **hybrid**: Prefers documents, falls back to general knowledge with indication
+- **augment** (default): Freely uses both documents and general knowledge
+
+The RAG proxy now reads RAG_MODE from environment and adjusts the system
+prompt accordingly. This allows applications to control RAG behavior
+without modifying the rag_framework script.
+
+Example usage:
+  ramalama serve --env RAG_MODE=strict --rag /path/to/db model
+  ramalama serve --env RAG_MODE=hybrid --rag /path/to/db model
+  ramalama serve --env RAG_MODE=augment --rag /path/to/db model
+
+Previously, the prompt was hardcoded to a weak "please don't fabricate"
+instruction that models often ignored. The new strict mode uses strong
+language to enforce document-only responses.
+---
+ container-images/scripts/rag_framework | 72 +++++++++++++++++++++-----
+ 1 file changed, 60 insertions(+), 12 deletions(-)
+
+diff --git a/container-images/scripts/rag_framework b/container-images/scripts/rag_framework
+index aabf2fb1..07f214a3 100755
+--- a/container-images/scripts/rag_framework
++++ b/container-images/scripts/rag_framework
+@@ -82,6 +82,7 @@ class ChatCompletionResponse(BaseModel):
+ class Delta(BaseModel):
+     role: str | None = None
+     content: str | None = None
++    reasoning_content: str | None = None
+ 
+ 
+ class StreamChoice(BaseModel):
+@@ -251,14 +252,62 @@ class OpenAICompatibleRagService:
+         # Perform RAG lookup
+         rag_context = await self._perform_rag_lookup(latest_message.content)
+         conversation_history = self._extract_conversation_context(messages[:-1])
++        
++        # Get RAG mode from environment
++        rag_mode = os.getenv("RAG_MODE", "strict").lower()
++        
++        # Build system prompt based on RAG mode
++        if rag_mode == "strict":
++            system_prompt = textwrap.dedent(
++                """
++            You are a strict document-based assistant. You MUST ONLY answer questions using information from the provided context.
++            
++            **CRITICAL RULES:**
++            - If the answer is NOT EXPLICITLY in the context below, you MUST respond with EXACTLY: "I don't know."
++            - Do NOT use your general knowledge
++            - Do NOT make assumptions or inferences beyond what's stated
++            - Do NOT provide answers from your training data
++            
++            ### Conversation History:
++            {0}
++
++            ### Retrieved Context:
++            {1}
+ 
+-        # Enhanced system prompt with RAG context
+-        system_prompt = (
+-            textwrap.dedent(
++            ### Current Question:
++            {2}
++            
++            Answer ONLY from the context above, or say "I don't know."
++            """
++            ).strip().format(conversation_history, rag_context, latest_message.content)
++        elif rag_mode == "hybrid":
++            system_prompt = textwrap.dedent(
++                """
++            You are an expert assistant with access to relevant documents.
++            
++            **Instructions:**
++            - First, check if the answer is in the provided context
++            - If yes, answer using the context
++            - If no, you may use your general knowledge but indicate this
++            
++            ### Conversation History:
++            {0}
++
++            ### Retrieved Context:
++            {1}
++
++            ### Current Question:
++            {2}
++            
++            Provide a helpful response, preferring the context when available.
++            """
++            ).strip().format(conversation_history, rag_context, latest_message.content)
++        else:  # augment mode (default)
++            system_prompt = textwrap.dedent(
+                 """
+             You are an expert software architect assistant.
+             Use the provided context and conversation history to answer questions accurately and concisely.
+-            If the answer is not in the context, respond with "I don't know" - do not fabricate details.
++            You may supplement with your general knowledge when helpful.
+ 
+             ### Conversation History:
+             {0}
+@@ -269,12 +318,9 @@ class OpenAICompatibleRagService:
+             ### Current Question:
+             {2}
+ 
+-            Provide a helpful and accurate response based on the context above.
++            Provide a helpful and accurate response.
+             """
+-            )
+-            .strip()
+-            .format(conversation_history, rag_context, latest_message.content)
+-        )
++            ).strip().format(conversation_history, rag_context, latest_message.content)
+ 
+         return [{"role": "user", "content": system_prompt}]
+ 
+@@ -349,14 +395,16 @@ class OpenAICompatibleRagService:
+             )
+ 
+             async for chunk in response:
+-                if chunk.choices and chunk.choices[0].delta.content:
+-                    content = chunk.choices[0].delta.content
++                if chunk.choices and chunk.choices[0].delta:
++                    delta = chunk.choices[0].delta
++                    content = delta.content
++                    reasoning_content = delta.reasoning_content
+ 
+                     stream_chunk = ChatCompletionStreamResponse(
+                         id=completion_id,
+                         created=created,
+                         model=request.model,
+-                        choices=[StreamChoice(index=0, delta=Delta(content=content), finish_reason=None)],
++                        choices=[StreamChoice(index=0, delta=Delta(content=content, reasoning_content=reasoning_content), finish_reason=None)],
+                     )
+                     yield f"data: {stream_chunk.model_dump_json()}\n\n"
+ 
+-- 
+2.51.1
+

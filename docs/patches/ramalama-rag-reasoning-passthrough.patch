@@ -1,0 +1,55 @@
+From 51cdeaf50dd92cccb32537d324556903e9b2a0c6 Mon Sep 17 00:00:00 2001
+From: Carlos Soriano <csoriano2718@users.noreply.github.com>
+Date: Fri, 21 Nov 2025 23:12:18 +0100
+Subject: [PATCH] fix(rag): Pass through reasoning_content in streaming
+ responses
+
+Add support for reasoning_content field in RAG proxy streaming:
+- Add reasoning_content to Delta model
+- Extract and forward reasoning_content from upstream LLM
+- Preserve reasoning content in streaming chunks
+
+This allows reasoning models (deepseek-r1, qwq, etc.) to work correctly
+with RAG enabled. Previously, reasoning_content was stripped by the RAG
+proxy, causing the UI to not display the model's thought process.
+
+Tested with deepseek-r1:14b + RAG in strict/augment modes.
+---
+ container-images/scripts/rag_framework | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/container-images/scripts/rag_framework b/container-images/scripts/rag_framework
+index aabf2fb1..86f80ab2 100755
+--- a/container-images/scripts/rag_framework
++++ b/container-images/scripts/rag_framework
+@@ -82,6 +82,7 @@ class ChatCompletionResponse(BaseModel):
+ class Delta(BaseModel):
+     role: str | None = None
+     content: str | None = None
++    reasoning_content: str | None = None
+ 
+ 
+ class StreamChoice(BaseModel):
+@@ -349,14 +350,16 @@ class OpenAICompatibleRagService:
+             )
+ 
+             async for chunk in response:
+-                if chunk.choices and chunk.choices[0].delta.content:
+-                    content = chunk.choices[0].delta.content
++                if chunk.choices and chunk.choices[0].delta:
++                    delta = chunk.choices[0].delta
++                    content = delta.content
++                    reasoning_content = delta.reasoning_content
+ 
+                     stream_chunk = ChatCompletionStreamResponse(
+                         id=completion_id,
+                         created=created,
+                         model=request.model,
+-                        choices=[StreamChoice(index=0, delta=Delta(content=content), finish_reason=None)],
++                        choices=[StreamChoice(index=0, delta=Delta(content=content, reasoning_content=reasoning_content), finish_reason=None)],
+                     )
+                     yield f"data: {stream_chunk.model_dump_json()}\n\n"
+ 
+-- 
+2.51.1
+

@@ -1,0 +1,44 @@
+From 1e1f06c2cd92b7a39eaf676a2a7d2556f9066323 Mon Sep 17 00:00:00 2001
+From: Carlos Soriano <csoriano2718@users.noreply.github.com>
+Date: Fri, 21 Nov 2025 23:11:24 +0100
+Subject: [PATCH] fix(llama.cpp): Enable reasoning by default with
+ auto-detection
+
+- Add --reasoning-format auto to detect model's reasoning format
+- Change --reasoning-budget from 0 to -1 (unlimited) by default
+- Remove conditional --reasoning-budget flag (was causing reasoning to be disabled)
+
+This allows reasoning models (deepseek-r1, qwq, etc.) to work correctly
+by default without requiring explicit --thinking flag configuration.
+
+Previously, reasoning was disabled (--reasoning-budget 0) unless
+explicitly enabled, which made reasoning models behave like standard
+models. With --reasoning-format auto, llama-server can detect and
+properly format reasoning content from compatible models.
+---
+ inference-spec/engines/llama.cpp.yaml | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/inference-spec/engines/llama.cpp.yaml b/inference-spec/engines/llama.cpp.yaml
+index 19d84cb2..3fcef30b 100644
+--- a/inference-spec/engines/llama.cpp.yaml
++++ b/inference-spec/engines/llama.cpp.yaml
+@@ -32,10 +32,12 @@ commands:
+           if: "{{ not model.mmproj_path }}"
+         - name: "--no-warmup"
+           description: "Flag to disable empty run for warm up"
++        - name: "--reasoning-format"
++          description: "Format for reasoning content (auto = detect from model)"
++          value: "auto"
+         - name: "--reasoning-budget"
+-          description: "Controls the amount of thinking allowed"
+-          value: "0"
+-          if: "{{ not args.thinking }}"
++          description: "Reasoning budget for thinking (-1 = unlimited, 0 = disabled)"
++          value: "-1"
+         - name: "--alias"
+           description: "The alias used when running the AI model"
+           value: "{{ model.alias }}"
+-- 
+2.51.1
+
