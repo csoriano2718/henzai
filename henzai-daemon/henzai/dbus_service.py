@@ -1346,6 +1346,28 @@ class henzaiService:
             logger.error(f"Error checking RAG image: {e}")
             return False  # Assume doesn't exist if we can't check
     
+    def _check_ramalama_has_rag(self) -> bool:
+        """
+        Check if ramalama service is currently configured with --rag flag.
+        
+        Returns:
+            True if ramalama has --rag in its ExecStart, False otherwise
+        """
+        try:
+            service_file = Path.home() / '.config' / 'systemd' / 'user' / 'ramalama.service'
+            
+            if not service_file.exists():
+                logger.warning(f"Service file not found: {service_file}")
+                return False
+            
+            with open(service_file, 'r') as f:
+                content = f.read()
+                # Check if --rag or --rag-image is in the ExecStart line
+                return '--rag' in content
+        except Exception as e:
+            logger.error(f"Error checking ramalama RAG status: {e}")
+            return False
+    
     def _restart_ramalama_service(self, enable_rag: bool = False) -> bool:
         """
         Restart ramalama.service with or without RAG.
