@@ -1361,9 +1361,14 @@ class henzaiService:
                 return False
             
             with open(service_file, 'r') as f:
-                content = f.read()
-                # Check if --rag or --rag-image is in the ExecStart line
-                return '--rag' in content
+                for line in f:
+                    # Only check ExecStart lines that are not commented
+                    if line.strip().startswith('ExecStart=') and '--rag' in line:
+                        logger.debug(f"Found --rag in ExecStart: {line.strip()}")
+                        return True
+                
+                logger.debug("No --rag found in active ExecStart line")
+                return False
         except Exception as e:
             logger.error(f"Error checking ramalama RAG status: {e}")
             return False
@@ -1415,7 +1420,8 @@ class henzaiService:
             # Build new ExecStart command
             # NOTE: We intentionally do NOT use --port flag with --rag due to ramalama bug
             # (see RAMALAMA_RFE.md Issue #2). Ramalama will default to 8080/8081 anyway.
-            base_cmd = f"{ramalama_bin} serve --ctx-size 8192 --cache-reuse 512"
+            # Always enable --thinking for reasoning models (deepseek-r1, qwq, etc.)
+            base_cmd = f"{ramalama_bin} serve --ctx-size 8192 --cache-reuse 512 --thinking true"
             
             # Get current model from service file
             model = "ollama://library/deepseek-r1:14b"  # default
@@ -1430,6 +1436,7 @@ class henzaiService:
             if enable_rag and has_rag_db:
                 # Use custom RAG image with chosen mode
                 # Pass RAG_MODE as environment variable to the RAG container
+                # NOTE: Always use the 'augment' image tag - the container supports all modes via RAG_MODE env var
                 rag_mode = getattr(self, '_rag_mode', 'augment')  # Default to augment if not set
                 exec_start = f"{base_cmd} --env RAG_MODE={rag_mode} --rag-image localhost/ramalama/cuda-rag:augment --rag {rag_db_path} {model}"
             else:

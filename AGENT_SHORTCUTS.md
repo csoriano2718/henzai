@@ -89,6 +89,36 @@ print(status)
 
 ---
 
+## Testing (Automated Tests)
+
+### "run tests" / "test all"
+```bash
+cd /home/csoriano/henzAI && ./tests/run-tests.sh
+```
+**What it does:**
+- Runs all automated tests (unit + integration + RAG)
+- Checks prerequisites (starts services if needed)
+- Shows pass/fail summary
+
+### "test rag" / "test rag only"
+```bash
+cd /home/csoriano/henzAI && ./tests/run-tests.sh rag
+```
+**What it does:**
+- Runs only RAG tests (e2e + reasoning)
+- Verifies RAG modes work correctly
+- Tests reasoning + RAG integration
+
+### "test unit" / "unit tests"
+```bash
+cd /home/csoriano/henzAI && ./tests/run-tests.sh unit
+```
+**What it does:**
+- Runs daemon unit tests only
+- Fast (no service dependencies)
+
+---
+
 ## Rules for Agent
 
 1. **DEFAULT ACTION:** When user says "install" → run `./install.sh` → tell user to reload GNOME Shell
@@ -106,6 +136,8 @@ print(status)
 |-----------|----------|----------------|
 | **"install"** | `./install.sh` | "Reload GNOME Shell: Alt+F2 → r" |
 | **"test"** | `./dev/dev-test.sh` | "Check the nested window + reload main shell" |
+| **"run tests"** | `./tests/run-tests.sh` | Show test results |
+| **"test rag"** | `./tests/run-tests.sh rag` | Show RAG test results |
 | **"logs"** | `journalctl --user -u henzai-daemon -n 50 --no-pager` | Show output |
 | **"status"** | `systemctl --user status henzai-daemon ramalama --no-pager` | Show output |
 | **"restart daemon"** | `systemctl --user restart henzai-daemon` | "Restarted" |

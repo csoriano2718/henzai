@@ -119,6 +119,11 @@ echo
 echo "Enabling extension..."
 gnome-extensions enable henzai@csoriano || true
 
+# Restart daemon to pick up changes
+echo
+echo "Restarting henzai-daemon..."
+systemctl --user restart henzai-daemon 2>/dev/null || true
+
 echo
 echo "======================================"
 echo "Installation Complete!"

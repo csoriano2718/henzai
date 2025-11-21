@@ -1,0 +1,168 @@
+name: henzai Test Suite
+
+on:
+  push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Unit tests that don't require full service setup
+  unit-tests:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        dnf install -y \
+          python3 \
+          python3-pip \
+          python3-dbus \
+          python3-gobject \
+          dbus-x11
+        pip3 install -r henzai-daemon/requirements.txt
+    
+    - name: Run daemon unit tests
+      run: |
+        cd henzai-daemon
+        python3 -m pytest tests/ -v
+  
+  # Integration tests that require services
+  integration-tests:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    needs: unit-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        dnf install -y \
+          python3 \
+          python3-pip \
+          python3-dbus \
+          python3-gobject \
+          dbus-x11 \
+          systemd \
+          podman \
+          git
+    
+    - name: Install Python dependencies
+      run: |
+        pip3 install -r henzai-daemon/requirements.txt
+    
+    - name: Install ramalama (development version)
+      run: |
+        # Clone and install ramalama from repo
+        git clone https://github.com/containers/ramalama.git /tmp/ramalama
+        cd /tmp/ramalama
+        pip3 install -e .
+        # Verify installation
+        ramalama --version
+    
+    - name: Install henzai
+      run: |
+        # Install without sudo (user-space only)
+        ./install.sh
+    
+    - name: Start D-Bus session
+      run: |
+        dbus-launch --sh-syntax > /tmp/dbus-env
+        source /tmp/dbus-env
+        echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
+    
+    - name: Start henzai-daemon
+      run: |
+        systemctl --user start henzai-daemon
+        # Wait for daemon to be ready
+        sleep 5
+        systemctl --user status henzai-daemon
+    
+    - name: Run streaming tests
+      run: |
+        ./tests/test-streaming.py
+    
+    - name: Run model tests
+      run: |
+        ./tests/test-model-switch.py
+    
+    - name: Run history tests
+      run: |
+        ./tests/test-history.py
+  
+  # RAG tests (require larger models and GPU)
+  # These are optional and can be run separately
+  rag-tests:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    needs: unit-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        dnf install -y \
+          python3 \
+          python3-pip \
+          python3-dbus \
+          python3-gobject \
+          dbus-x11 \
+          systemd \
+          podman \
+          git
+        pip3 install -r henzai-daemon/requirements.txt
+    
+    - name: Install ramalama
+      run: |
+        git clone https://github.com/containers/ramalama.git /tmp/ramalama
+        cd /tmp/ramalama
+        pip3 install -e .
+    
+    - name: Install henzai
+      run: ./install.sh
+    
+    - name: Pull RAG container
+      run: |
+        # Pre-pull container to avoid timeout
+        podman pull quay.io/ramalama/cuda-rag:latest || true
+    
+    - name: Start services
+      run: |
+        dbus-launch --sh-syntax > /tmp/dbus-env
+        source /tmp/dbus-env
+        echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
+        systemctl --user start henzai-daemon
+        sleep 5
+    
+    - name: Run RAG E2E tests
+      run: |
+        ./tests/test-rag-e2e.py
+      timeout-minutes: 10
+    
+    - name: Run RAG + Reasoning tests
+      run: |
+        ./tests/test-rag-reasoning.py
+      timeout-minutes: 10
+    
+    - name: Upload test logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs
+        path: |
+          /tmp/henzai-*.log
+          ~/.local/share/henzai/logs/
+
+# TODO: Add coverage reporting
+# TODO: Add performance benchmarking
+# TODO: Add UI tests (requires nested GNOME Shell)
+

@@ -125,6 +125,9 @@ def main():
                 except Exception as e:
                     logger.warning(f"Could not read RAG mode from gsettings: {e}, using default")
                 
+                # Set the RAG mode in the service so _restart_ramalama_service can use it
+                service._rag_mode = rag_mode
+                
                 # Check if ramalama is already running with --rag
                 ramalama_has_rag = service._check_ramalama_has_rag()
                 

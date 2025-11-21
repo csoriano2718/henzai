@@ -294,3 +294,7 @@ Investigate Unicode rendering issue with deepseek-r1
 3. Add better error handling/logging in Settings UI
 4. Investigate deepseek-r1 Unicode issue separately
 
+
+
+
+
