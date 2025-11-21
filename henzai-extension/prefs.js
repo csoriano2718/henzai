@@ -558,12 +558,14 @@ export default class henzaiPreferences extends ExtensionPreferences {
             });
             
             daemonProxy.connectSignal('RAGIndexingProgress', (proxy, sender, [message, percent]) => {
+                console.log(`henzai: RAGIndexingProgress - ${percent}%: ${message}`);
                 statusRow.set_subtitle(`${message} (${percent}%)`);
             });
             
             daemonProxy.connectSignal('RAGIndexingComplete', (proxy, sender, [message, fileCount]) => {
                 // Show 100% completion explicitly (fixes "stuck at 80%" UI issue)
-                statusRow.set_subtitle(`${message} (100%)`);
+                console.log(`henzai: RAGIndexingComplete signal received - ${fileCount} files indexed`);
+                statusRow.set_subtitle(`Indexed ${fileCount} files (100%)`);
                 this._settings.set_int('rag-file-count', fileCount);
                 this._settings.set_string('rag-last-indexed', new Date().toISOString());
                 button.set_sensitive(true);
