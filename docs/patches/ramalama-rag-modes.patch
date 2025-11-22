@@ -1,0 +1,232 @@
+From 3813cdbef3e8d7f0ac131af8f20d28d32be35b41 Mon Sep 17 00:00:00 2001
+From: Carlos Soriano <csoriano2718@users.noreply.github.com>
+Date: Sat, 22 Nov 2025 08:43:06 +0100
+Subject: [PATCH 1/2] Strengthen RAG prompt enforcement to prevent
+ hallucinations
+
+The original RAG prompt used weak language ("do not fabricate") that
+LLMs often ignored, leading to hallucinations when documents didn't
+contain the answer. This strengthens the prompt to strictly enforce
+document-only responses.
+
+Changes:
+- Replace weak prompt language with explicit CRITICAL RULES
+- Require exact response "I don't know" when answer not in context
+- Explicitly forbid use of general knowledge or training data
+- Add emphasis through formatting and repetition
+
+This ensures RAG behaves as a true document retrieval system rather
+than an AI that happens to have access to documents.
+
+Tested with deepseek-r1:14b - correctly refuses to answer general
+knowledge questions not in the indexed documents.
+
+Assisted-by: Cursor with Claude Sonnet 4.5
+---
+ container-images/scripts/rag_framework | 44 +++++++++++++-------------
+ 1 file changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/container-images/scripts/rag_framework b/container-images/scripts/rag_framework
+index aabf2fb1..d2e92ee3 100755
+--- a/container-images/scripts/rag_framework
++++ b/container-images/scripts/rag_framework
+@@ -252,29 +252,29 @@ class OpenAICompatibleRagService:
+         rag_context = await self._perform_rag_lookup(latest_message.content)
+         conversation_history = self._extract_conversation_context(messages[:-1])
+ 
+-        # Enhanced system prompt with RAG context
+-        system_prompt = (
+-            textwrap.dedent(
+-                """
+-            You are an expert software architect assistant.
+-            Use the provided context and conversation history to answer questions accurately and concisely.
+-            If the answer is not in the context, respond with "I don't know" - do not fabricate details.
+-
+-            ### Conversation History:
+-            {0}
+-
+-            ### Retrieved Context:
+-            {1}
+-
+-            ### Current Question:
+-            {2}
+-
+-            Provide a helpful and accurate response based on the context above.
++        # Enhanced system prompt with RAG context - strict mode
++        system_prompt = textwrap.dedent(
+             """
+-            )
+-            .strip()
+-            .format(conversation_history, rag_context, latest_message.content)
+-        )
++        You are a strict document-based assistant. You MUST ONLY answer questions using information from the provided context.
++        
++        **CRITICAL RULES:**
++        - If the answer is NOT EXPLICITLY in the context below, you MUST respond with EXACTLY: "I don't know."
++        - Do NOT use your general knowledge
++        - Do NOT make assumptions or inferences beyond what's stated
++        - Do NOT provide answers from your training data
++        
++        ### Conversation History:
++        {0}
++
++        ### Retrieved Context:
++        {1}
++
++        ### Current Question:
++        {2}
++        
++        Answer ONLY from the context above, or say "I don't know."
++        """
++        ).strip().format(conversation_history, rag_context, latest_message.content)
+ 
+         return [{"role": "user", "content": system_prompt}]
+ 
+-- 
+2.51.1
+
+
+From 4b2e3ce1317f4ccdbd6024ec5b768e477d68c790 Mon Sep 17 00:00:00 2001
+From: Carlos Soriano <csoriano2718@users.noreply.github.com>
+Date: Sat, 22 Nov 2025 08:43:42 +0100
+Subject: [PATCH 2/2] Add configurable RAG modes via RAG_MODE environment
+ variable
+
+Adds three RAG operational modes to give users control over how the
+system balances document retrieval with general AI knowledge:
+
+**strict** (document-only):
+  - Refuses to answer questions not explicitly in the documents
+  - Returns "I don't know" for out-of-context queries
+  - Ideal for compliance/audit scenarios where only verified
+    information should be provided
+
+**hybrid** (document-preferred):
+  - Prefers answers from documents when available
+  - Falls back to general knowledge when documents don't contain the answer
+  - Indicates when using general knowledge vs. documents
+  - Balanced approach for most use cases
+
+**augment** (default, knowledge-enhanced):
+  - Freely combines document context with AI general knowledge
+  - Original RAG behavior - documents inform but don't constrain
+  - Best for creative/advisory use cases
+
+Usage:
+  ramalama serve --env RAG_MODE=strict --rag /path/to/db model
+  ramalama serve --env RAG_MODE=hybrid --rag /path/to/db model
+  ramalama serve --env RAG_MODE=augment --rag /path/to/db model
+
+Depends on: 7c07c531 (Pass through reasoning_content in RAG proxy streaming)
+This commit works with reasoning models that need reasoning_content
+forwarded through the RAG proxy.
+
+Tested all three modes with deepseek-r1:14b and document corpus.
+
+Assisted-by: Cursor with Claude Sonnet 4.5
+---
+ container-images/scripts/rag_framework | 85 ++++++++++++++++++++------
+ 1 file changed, 65 insertions(+), 20 deletions(-)
+
+diff --git a/container-images/scripts/rag_framework b/container-images/scripts/rag_framework
+index d2e92ee3..33b9121b 100755
+--- a/container-images/scripts/rag_framework
++++ b/container-images/scripts/rag_framework
+@@ -252,29 +252,74 @@ class OpenAICompatibleRagService:
+         rag_context = await self._perform_rag_lookup(latest_message.content)
+         conversation_history = self._extract_conversation_context(messages[:-1])
+ 
+-        # Enhanced system prompt with RAG context - strict mode
+-        system_prompt = textwrap.dedent(
+-            """
+-        You are a strict document-based assistant. You MUST ONLY answer questions using information from the provided context.
+-        
+-        **CRITICAL RULES:**
+-        - If the answer is NOT EXPLICITLY in the context below, you MUST respond with EXACTLY: "I don't know."
+-        - Do NOT use your general knowledge
+-        - Do NOT make assumptions or inferences beyond what's stated
+-        - Do NOT provide answers from your training data
++        # Enhanced system prompt with RAG context
++        # Support multiple RAG modes via RAG_MODE environment variable
++        rag_mode = os.getenv("RAG_MODE", "augment").lower()
+         
+-        ### Conversation History:
+-        {0}
++        if rag_mode == "strict":
++            system_prompt = textwrap.dedent(
++                """
++            You are a strict document-based assistant. You MUST ONLY answer questions using information from the provided context.
++            
++            **CRITICAL RULES:**
++            - If the answer is NOT EXPLICITLY in the context below, you MUST respond with EXACTLY: "I don't know."
++            - Do NOT use your general knowledge
++            - Do NOT make assumptions or inferences beyond what's stated
++            - Do NOT provide answers from your training data
++            
++            ### Conversation History:
++            {0}
++
++            ### Retrieved Context:
++            {1}
++
++            ### Current Question:
++            {2}
++            
++            Answer ONLY from the context above, or say "I don't know."
++            """
++            ).strip().format(conversation_history, rag_context, latest_message.content)
++        elif rag_mode == "hybrid":
++            system_prompt = textwrap.dedent(
++                """
++            You are an expert assistant with access to relevant documents.
++            
++            **Instructions:**
++            - First, check if the answer is in the provided context
++            - If yes, answer using the context
++            - If no, you may use your general knowledge but indicate this
++            
++            ### Conversation History:
++            {0}
++
++            ### Retrieved Context:
++            {1}
++
++            ### Current Question:
++            {2}
++            
++            Provide a helpful response, preferring the context when available.
++            """
++            ).strip().format(conversation_history, rag_context, latest_message.content)
++        else:  # augment mode (default)
++            system_prompt = textwrap.dedent(
++                """
++            You are an expert software architect assistant.
++            Use the provided context and conversation history to answer questions accurately and concisely.
++            You may supplement with your general knowledge when helpful.
+ 
+-        ### Retrieved Context:
+-        {1}
++            ### Conversation History:
++            {0}
+ 
+-        ### Current Question:
+-        {2}
+-        
+-        Answer ONLY from the context above, or say "I don't know."
+-        """
+-        ).strip().format(conversation_history, rag_context, latest_message.content)
++            ### Retrieved Context:
++            {1}
++
++            ### Current Question:
++            {2}
++
++            Provide a helpful and accurate response.
++            """
++            ).strip().format(conversation_history, rag_context, latest_message.content)
+ 
+         return [{"role": "user", "content": system_prompt}]
+ 
+-- 
+2.51.1
+
